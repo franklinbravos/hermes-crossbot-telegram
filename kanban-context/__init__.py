@@ -592,19 +592,133 @@ def run_maintenance(force: bool = False) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Response coordination — prevent duplicate bot replies in shared groups
+# Response coordination — prevents duplicate replies in shared groups
+#
+# RULES:
+#   1. Bot that is @mentioned MUST respond (even if others already did)
+#   2. If multiple bots are @mentioned, ALL respond
+#   3. If no one is @mentioned, the designated bot for that chat_key responds
+#   4. If not mentioned and not assigned, stays silent
 # ---------------------------------------------------------------------------
 
-_RESPONSE_COOLDOWN: float = 30.0  # seconds — if bot A responded, bot B waits
+_RESPONSE_COOLDOWN: float = 30.0  # seconds
+
+_TOPIC_MAP: Optional[Dict[str, str]] = None  # cache for topic map
+
+
+def _get_bot_mention_names() -> List[str]:
+    """Return a list of identifiers this bot can be @mentioned by.
+
+    Includes:
+    - The explicit CROSSBOT_BOT_NAME (e.g. 'Matias')
+    - The profile name (e.g. 'ti')
+    - Any names listed in KANBAN_CONTEXT_MENTION_MAP for this bot
+    """
+    bot = _my_bot_name()
+    names = [bot]
+
+    # Also add the lowercased version for case-insensitive matching
+    names.append(bot.lower())
+
+    # Check mention map for @username aliases
+    raw = os.environ.get("KANBAN_CONTEXT_MENTION_MAP", "").strip()
+    if raw:
+        for pair in raw.split(","):
+            pair = pair.strip()
+            if "=" not in pair:
+                continue
+            key, value = pair.split("=", 1)
+            key = key.strip()
+            if key == bot or key == bot.lower():
+                if value.startswith("@"):
+                    names.append(value)
+                    names.append(value.lower())
+                names.append(value)
+
+    return names
+
+
+def _get_bot_owned_chats() -> List[str]:
+    """Return list of chat_keys assigned to this bot.
+
+    Reads from KANBAN_CONTEXT_TOPIC_MAP env var.
+    Format: chat_key=bot_name,chat_key=bot_name
+    """
+    global _TOPIC_MAP
+    if _TOPIC_MAP is None:
+        _TOPIC_MAP = {}
+        raw = os.environ.get("KANBAN_CONTEXT_TOPIC_MAP", "").strip()
+        if raw:
+            for pair in raw.split(","):
+                pair = pair.strip()
+                if "=" not in pair:
+                    continue
+                chat_key, assigned = pair.split("=", 1)
+                _TOPIC_MAP[chat_key.strip()] = assigned.strip()
+    bot = _my_bot_name()
+    return [ck for ck, ab in (_TOPIC_MAP or {}).items() if ab == bot]
+
+
+def _is_bot_mentioned(user_message: str) -> bool:
+    """Check if this bot is @mentioned in the user message."""
+    if not user_message:
+        return False
+    msg_lower = user_message.lower()
+    for name in _get_bot_mention_names():
+        if name.lower() in msg_lower:
+            return True
+    return False
+
+
+def _mentioned_bots(user_message: str) -> List[str]:
+    """Return list of ALL bots mentioned in the user message.
+
+    Reads the full mention map to find which profiles are @mentioned.
+    """
+    mentioned: List[str] = []
+    if not user_message:
+        return mentioned
+
+    msg_lower = user_message.lower()
+
+    # Build reverse map: mention_string -> profile_name
+    raw = os.environ.get("KANBAN_CONTEXT_MENTION_MAP", "").strip()
+    reverse_map: Dict[str, str] = {}
+    if raw:
+        for pair in raw.split(","):
+            pair = pair.strip()
+            if "=" not in pair:
+                continue
+            key, value = pair.split("=", 1)
+            key = key.strip()
+            value = value.strip().lower()
+            reverse_map[value] = key
+            if value.startswith("@"):
+                reverse_map[value[1:]] = key  # also match without @
+
+    # Check each known profile alias
+    for mention, profile in reverse_map.items():
+        if mention in msg_lower:
+            mentioned.append(profile)
+
+    return mentioned
+
+
+def _is_designated_bot_for_chat(chat_key: str) -> bool:
+    """Check if this bot is the designated responder for this chat_key."""
+    global _TOPIC_MAP
+    if _TOPIC_MAP is None:
+        _get_bot_owned_chats()  # populates _TOPIC_MAP
+    assigned = (_TOPIC_MAP or {}).get(chat_key)
+    if not assigned:
+        return False  # No explicit assignment — handled by fallback
+    return assigned == _my_bot_name()
 
 
 def _resolve_chat_key_from_kwargs(kwargs: dict) -> str:
     """Derive a chat_key from the hook kwargs."""
     session_id = kwargs.get("session_id", "") or ""
-    user_message = kwargs.get("user_message", "") or ""
-    platform = kwargs.get("platform", "") or ""
 
-    # Try to parse from session_id (format: agent:main:platform:type:chat_id[:thread_id])
     parts = session_id.split(":")
     if len(parts) >= 5:
         chat_id = parts[4]
@@ -612,68 +726,123 @@ def _resolve_chat_key_from_kwargs(kwargs: dict) -> str:
             return f"{chat_id}:{parts[5]}"
         return chat_id
 
-    # Fallback: use user_message hash as chat_key (less precise but functional)
     import hashlib
     return f"unknown_{hashlib.md5(session_id.encode()).hexdigest()[:12]}"
 
 
 def claim_response(user_message: str, chat_key: str) -> bool:
-    """Try to claim a response slot for this user_message in this chat.
+    """Decide whether THIS bot should respond based on coordination rules.
 
-    Returns True if caller should respond (first to claim),
-    Returns False if another bot already claimed it (skip).
+    Priority:
+      1. If this bot is @mentioned → ALWAYS respond
+      2. If other bots are @mentioned and this one ISN'T → skip
+      3. If NO @mentions → check designated topic assignment
+      4. If designated → respond
+      5. If not designated → skip (unless no assignment, then legacy: first-wins)
+
+    Returns True if bot should respond, False if it should stay silent.
     """
     if not user_message or not chat_key:
-        return True  # Can't check — default to respond
+        return True
 
+    msg_trimmed = user_message[:200]
+    bot = _my_bot_name()
+    im_mentioned = _is_bot_mentioned(user_message)
+    all_mentioned = _mentioned_bots(user_message)
+
+    # RULE 1: I'm @mentioned → always respond
+    if im_mentioned:
+        logger.debug(
+            "kanban-context: claim=YES (mentioned) bot=%s chat=%s",
+            bot, chat_key,
+        )
+        _record_response_claim(bot, chat_key, msg_trimmed)
+        return True
+
+    # RULE 2: Other bots mentioned, I'm not → skip
+    if all_mentioned:
+        mentioned_str = ", ".join(all_mentioned)
+        logger.info(
+            "kanban-context: claim=NO (others mentioned: %s) bot=%s chat=%s",
+            mentioned_str, bot, chat_key,
+        )
+        return False
+
+    # RULE 3-5: No @mentions → check designation
+    # First, check if someone already claimed this slot
     conn = _open_shared_db()
     now = time.time()
-    bot = _my_bot_name()
+    cutoff = now - _RESPONSE_COOLDOWN
     try:
-        # Check if someone already responded recently
-        cutoff = now - _RESPONSE_COOLDOWN
         existing = conn.execute(
             "SELECT responder FROM response_log "
             "WHERE chat_key=? AND user_message=? AND ts >= ? AND responded=1 "
             "ORDER BY ts DESC LIMIT 1",
-            (chat_key, user_message[:200], cutoff),
+            (chat_key, msg_trimmed, cutoff),
         ).fetchone()
-
-        if existing is not None:
-            other = existing[0]
-            if other != bot:
-                logger.info(
-                    "kanban-context: skipping response — '%s' already replied "
-                    "to msg in chat %s (cooldown=%ss)",
-                    other, chat_key, _RESPONSE_COOLDOWN,
-                )
-                return False
-
-        # Claim the slot
-        conn.execute(
-            "INSERT INTO response_log (ts, bot_name, chat_key, user_message, responded, responder) "
-            "VALUES (?, ?, ?, ?, 1, ?)",
-            (now, bot, chat_key, user_message[:200], bot),
-        )
-        conn.commit()
-        logger.debug(
-            "kanban-context: claimed response slot for chat=%s bot=%s",
-            chat_key, bot,
-        )
-        return True
-    except Exception as exc:
-        logger.warning("kanban-context: claim_response failed: %s", exc)
-        return True  # On error, let the bot respond (fail open)
+    except Exception:
+        existing = None
     finally:
         conn.close()
 
+    if existing is not None:
+        other = existing[0]
+        # Check if other bot had explicit mention priority
+        # Since we already ruled out mentions, first-claimer wins
+        logger.info(
+            "kanban-context: claim=NO (%s already claimed) bot=%s chat=%s",
+            other, bot, chat_key,
+        )
+        return False
+
+    # RULE 3: Check if this is my designated chat
+    if _is_designated_bot_for_chat(chat_key):
+        logger.debug(
+            "kanban-context: claim=YES (designated) bot=%s chat=%s",
+            bot, chat_key,
+        )
+        _record_response_claim(bot, chat_key, msg_trimmed)
+        return True
+
+    # RULE 5: Not my chat, no mentions → skip (strict)
+    global _TOPIC_MAP
+    if _TOPIC_MAP and chat_key in _TOPIC_MAP:
+        # If chat IS mapped but not to me → skip
+        logger.info(
+            "kanban-context: claim=NO (not my topic) bot=%s chat=%s",
+            bot, chat_key,
+        )
+        return False
+
+    # No topic map at all → legacy fallback: first-wins (backward compat)
+    logger.debug(
+        "kanban-context: claim=YES (no topic map) bot=%s chat=%s",
+        bot, chat_key,
+    )
+    _record_response_claim(bot, chat_key, msg_trimmed)
+    return True
+
+
+def _record_response_claim(bot: str, chat_key: str, msg_trimmed: str) -> None:
+    """Record a response claim in the shared DB."""
+    try:
+        conn = _open_shared_db()
+        conn.execute(
+            "INSERT INTO response_log (ts, bot_name, chat_key, user_message, responded, responder) "
+            "VALUES (?, ?, ?, ?, 1, ?)",
+            (time.time(), bot, chat_key, msg_trimmed, bot),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logger.warning("kanban-context: failed to record claim: %s", exc)
+
 
 def _inject_response_coordination(**kwargs) -> Optional[Dict[str, str]]:
-    """pre_llm_call hook — injects context about other bots' responses.
+    """pre_llm_call hook — injects coordination context.
 
-    If another bot already responded to this user's message in this
-    chat within the cooldown period, inject a warning so the agent
-    knows to coordinate instead of repeating.
+    Informs the agent if other bots have already responded, or if
+    this bot should be the primary responder.
     """
     user_message = kwargs.get("user_message", "") or ""
     chat_key = _resolve_chat_key_from_kwargs(kwargs)
@@ -681,6 +850,15 @@ def _inject_response_coordination(**kwargs) -> Optional[Dict[str, str]]:
     if not user_message or not chat_key:
         return None
 
+    lines = ["[Response Coordination]", ""]
+    bot = _my_bot_name()
+
+    # Check if this bot is @mentioned
+    im_mentioned = _is_bot_mentioned(user_message)
+    all_mentioned = _mentioned_bots(user_message)
+    is_designated = _is_designated_bot_for_chat(chat_key)
+
+    # Check other respondents
     conn = _open_shared_db()
     now = time.time()
     cutoff = now - _RESPONSE_COOLDOWN
@@ -690,33 +868,45 @@ def _inject_response_coordination(**kwargs) -> Optional[Dict[str, str]]:
             "WHERE chat_key=? AND user_message=? AND ts >= ? AND responded=1 "
             "AND responder != ? "
             "ORDER BY ts DESC LIMIT 3",
-            (chat_key, user_message[:200], cutoff, _my_bot_name()),
+            (user_message[:200], chat_key, cutoff, bot),
         ).fetchall()
     except Exception:
-        return None
+        others = []
     finally:
         conn.close()
 
-    if not others:
-        return None
+    # Build context
+    if im_mentioned:
+        lines.append(f"**You were @mentioned** — you MUST respond to this message.")
+    if all_mentioned:
+        lines.append(f"Also mentioned: **{', '.join(all_mentioned)}**")
+    if is_designated:
+        lines.append(f"This chat is assigned to **{bot}** — you are the primary responder.")
+    if others:
+        lines.append("")
+        for responder, ts in others:
+            lines.append(f"- **{responder}** responded {_fmt_time(ts)}")
 
-    lines = ["[Response Coordination]", ""]
-    for responder, ts in others:
-        ago = _fmt_time(ts)
-        lines.append(f"- **{responder}** responded {ago}")
-    lines.extend([
-        "",
-        "Another bot has already responded to this message. "
-        "Unless explicitly @mentioned or asked a direct follow-up, "
-        "avoid repeating what was already said. If you have something "
-        "new to add, acknowledge the other bot's response first.",
-        "",
-        "[End Response Coordination]",
-    ])
+    # Decision guidance
+    lines.append("")
+    if im_mentioned:
+        lines.append("→ Respond. You were called out.")
+    elif all_mentioned and not im_mentioned:
+        lines.append("→ Skip. Others were @mentioned, not you.")
+    elif is_designated:
+        lines.append("→ Respond. You own this topic.")
+    elif others:
+        lines.append("→ Consider whether you need to add value before responding.")
+    else:
+        lines.append("→ Respond if you have useful input.")
+    lines.append("")
+    lines.append("[End Response Coordination]")
+
     ctx = "\n".join(lines)
-    logger.info(
-        "kanban-context: coordination context injected — %d other bot(s) "
-        "already responded in chat %s", len(others), chat_key,
+    logger.debug(
+        "kanban-context: coordination ctx injected bot=%s chat=%s "
+        "mentioned=%s designated=%s",
+        bot, chat_key, im_mentioned, is_designated,
     )
     return {"context": ctx}
 
