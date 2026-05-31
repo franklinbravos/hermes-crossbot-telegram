@@ -1,22 +1,16 @@
 {
-  "comment": "Mapeamento bot → tópico. Documentação: docs/onboarding/03-topicos-telegram.md",
-  "chat_id": "-1003716565637",
+  "comment": "Substitua pelos valores do seu ambiente. Ver docs/reference/topic-map.example.json",
+  "chat_id": "-100XXXXXXXXXX",
   "topics": {
-    "ti": 669,
-    "bravo": 637,
-    "catalogai": 638,
-    "crm-fast": 640,
-    "dado-seguro": 639,
-    "social-media": 641,
-    "hermes": 636
+    "orchestrator": 0,
+    "ops": 0,
+    "agent-alpha": 0,
+    "agent-beta": 0
   },
   "handles": {
-    "ti": "matias_bravos_dev_bot",
-    "bravo": "bravos_consult_bot",
-    "catalogai": "catalogai_agent_bot",
-    "crm-fast": "CRM_fast_combr_bot",
-    "dado-seguro": "DadoSeguroBot",
-    "social-media": "SocialMediaBravosBot",
-    "hermes": "hermes_local_dell_xps_bot"
+    "orchestrator": "seu_bot_orchestrator",
+    "ops": "seu_bot_ops",
+    "agent-alpha": "seu_bot_alpha",
+    "agent-beta": "seu_bot_beta"
   }
 }

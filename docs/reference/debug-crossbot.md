@@ -97,7 +97,7 @@ grep version ~/.hermes/plugins/kanban-context/plugin.yaml
 | telegram_msg_id NULL | ✅ Resolvido |
 | Telegram 400 reply cross-bot | ✅ Resolvido (sem reply entre tokens diferentes) |
 | Worker sem crossbot_respond tool | ✅ Workaround crossbot_cli.py |
-| Remetente errado (Matias como Bravo) | ✅ Token por profile |
+| Remetente errado (sender aparece como outro bot) | ✅ Token por profile |
 | Markdown parsing error | ✅ HTML parse_mode |
 
 ## Issues em aberto

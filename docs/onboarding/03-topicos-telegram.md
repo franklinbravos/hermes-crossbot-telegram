@@ -1,169 +1,66 @@
 # Tópicos Telegram — Estrutura e comunicação
 
-> Como organizar o grupo fórum para que humanos e bots não se percam.
+## Por que fórum com tópicos
 
-## Por que usar fórum com tópicos
-
-Num grupo Hermes multi-bot, **vários agentes** postam visibilidade cross-bot e respondem menções. Sem tópicos, tudo vira um feed caótico.
-
-Com fórum:
+Vários agentes postam visibilidade cross-bot no mesmo grupo. Tópicos separam por agente:
 
 ```
-Grupo "Workspace - Hermes"
-├── 📌 Geral (tópico 669)     ← Matias / TI / coordenação
-├── 📌 Bravo (637)            ← tudo do bot Bravo
-├── 📌 Catalogai (638)
-├── 📌 CRM-Fast (640)
+Grupo Fórum
+├── Tópico ops (coordenação)
+├── Tópico agent-alpha
+├── Tópico agent-beta
 └── ...
 ```
 
-Cada mensagem cross-bot vai para o **tópico do bot envolvido** — fácil de filtrar.
-
-## Mapa mental
-
-```
-                    ┌─────────────────────────┐
-                    │   Grupo Fórum Telegram   │
-                    │   chat_id: -100...       │
-                    └───────────┬─────────────┘
-                                │
-        ┌───────────────────────┼───────────────────────┐
-        │                       │                       │
-   Tópico Matias            Tópico Bravo           Tópico CRM
-   thread_id: 669           thread_id: 637         thread_id: 640
-        │                       │                       │
-   @matias_bravos_dev_bot  @bravos_consult_bot    @CRM_fast_combr_bot
-        │                       │                       │
-   profile: matias          profile: bravo         profile: crm-fast
-```
-
-## topic-map.json — contrato entre Telegram e Hermes
-
-Arquivo: `~/.hermes/plugins/kanban-context/topic-map.json`
+## topic-map.json
 
 ```json
 {
-  "comment": "Mapeamento bot → tópico e handle",
-  "chat_id": "-1003716565637",
+  "chat_id": "-100XXXXXXXXXX",
   "topics": {
-    "matias": 669,
-    "bravo": 637
+    "ops": 669,
+    "agent-alpha": 637
   },
   "handles": {
-    "matias": "matias_bravos_dev_bot",
-    "bravo": "bravos_consult_bot"
+    "ops": "seu_bot_ops",
+    "agent-alpha": "seu_bot_alpha"
   }
 }
 ```
 
-### Regras de ouro
+| Campo | Regra |
+|-------|-------|
+| Chave | Nome do **profile** Hermes |
+| `topics` | `message_thread_id` do fórum |
+| `handles` | Username **sem** `@` |
 
-| Regra | Exemplo |
-|-------|---------|
-| Chave = nome do **profile** Hermes | `"bravo"` → `profiles/bravo/` |
-| `topics[bot]` = ID numérico do tópico | Copie do Telegram (DevTools ou bot getUpdates) |
-| `handles[bot]` = username **sem** `@` | `bravos_consult_bot` |
-| Todo bot novo precisa de **entrada aqui** | Sem entrada → posta no thread default ou falha |
+Modelo: [../reference/topic-map.example.json](../reference/topic-map.example.json)
 
-### Como descobrir thread_id
+## Dois tipos de comunicação
 
-1. Poste uma mensagem no tópico desejado
-2. Use `getUpdates` na API do bot ou logs do gateway
-3. Campo: `message.message_thread_id`
+### A) Menção @bot
 
-## Dois tipos de comunicação no grupo
+Operador humano menciona um bot → resposta no grupo. Usa histórico injetado, **não** outbox.
 
-### A) Menção normal (@bot)
+### B) Cross-bot
 
-```
-Franklin: @bravos_consult_bot o site está no ar?
-Bravo: Sim, HTTP 200 ✅
-```
+Bot A chama `crossbot_send(to_bot="agent-beta")` → outbox → worker → 📤/📥 no Telegram.
 
-- Fluxo: Telegram → gateway Bravo → LLM → resposta no **mesmo tópico**
-- **Não** usa outbox cross-bot
-- `multi-agent-context` injeta histórico do grupo no contexto
+## Coordenação multi-bot
 
-### B) Cross-bot (bot → bot)
+Plugin injeta `[Response Coordination]`:
 
-```
-Matias (internamente): crossbot_send(to_bot="bravo", ...)
-  → 📤 aparece no tópico 637 (Bravo)
-  → Worker Bravo processa
-  → 📥 resposta aparece no tópico 637 como @bravos_consult_bot
-```
+- Responda se **foi @mencionado** ou é bot do tópico
+- **Não responda** se outro bot foi mencionado
 
-- Fluxo: outbox → Kanban worker → crossbot_cli respond
-- Humanos veem espelho 📤/📥
-- Remetente correto no Telegram (v2.2.4)
+## Checklist — bot novo
 
-## Quando usar cada um
+- [ ] Profile + `.env` (token, CROSSBOT_BOT_NAME)
+- [ ] Tópico no fórum
+- [ ] Entrada em topic-map.json
+- [ ] Bot admin no grupo
+- [ ] Plugins habilitados + restart
+- [ ] Smoke test cross-bot
+- [ ] SOUL com [AGENT-SYSTEM-PROMPT.md](./AGENT-SYSTEM-PROMPT.md)
 
-| Situação | Use |
-|----------|-----|
-| Franklin pergunta algo a um bot | Menção `@bot` |
-| Matias delega tarefa ao Bravo | `crossbot_send` |
-| Bot precisa de outro bot sem humano no meio | `crossbot_send` |
-| Resposta a mensagem cross-bot | `crossbot_cli respond` (worker) |
-
-## Coordenação multi-bot (evitar todos responderem)
-
-O plugin injeta `[Response Coordination]` no contexto quando vários bots estão no mesmo grupo:
-
-- Só responde quem foi **@mencionado**
-- Ou quem recebeu **reply** direto
-- Ou quem é o bot **designado** para aquele tópico (via topic-map)
-
-**Para humanos:** mencione sempre o bot certo. Evite perguntas abertas tipo "alguém pode verificar?" sem @.
-
-**Para bots:** siga [04-guia-agente-hermes.md](./04-guia-agente-hermes.md) — não responda se outro bot foi mencionado.
-
-## Visibilidade cross-bot — o que aparece
-
-### 📤 Envio (remetente posta)
-
-```
-📤 @matias_bravos_dev_bot
-
-From: matias
-To: bravo
-Subject: Status do site
-
-O site está no ar?
-
-└ outbox #71
-```
-
-Postado no **tópico do destinatário** (Bravo = 637).
-
-### 📥 Resposta (respondedor posta)
-
-```
-📥 @bravos_consult_bot
-
-Re: Status do site
-Para @matias_bravos_dev_bot
-
-Site online, HTTP 200
-
-└ outbox #71
-```
-
-Postado no **tópico do respondedor**.
-
-## Checklist ao adicionar bot novo
-
-- [ ] Criar profile Hermes (`profiles/novo-bot/`)
-- [ ] Token Telegram no `.env` do profile
-- [ ] `CROSSBOT_BOT_NAME=novo-bot`
-- [ ] Criar tópico no fórum Telegram
-- [ ] Adicionar entrada em `topic-map.json` (topics + handles)
-- [ ] Adicionar bot ao grupo como admin
-- [ ] Habilitar plugins no `config.yaml`
-- [ ] Reiniciar gateway
-- [ ] Teste: `crossbot_send` de Matias → novo-bot
-- [ ] Colar [AGENT-SYSTEM-PROMPT.md](./AGENT-SYSTEM-PROMPT.md) no SOUL
-
-## Próximo passo
-
-→ [Guia do agente Hermes](./04-guia-agente-hermes.md) — regras que cada bot deve seguir.
+→ [04-guia-agente-hermes.md](./04-guia-agente-hermes.md)

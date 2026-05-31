@@ -4,9 +4,9 @@
 
 ## O problema que resolvemos
 
-No Telegram, **bots não veem mensagens de outros bots**. Se você tem Matias (DevOps), Bravo (site), CRM-Fast etc., cada um vive numa bolha — não conseguem conversar pela API normal do Telegram.
+No Telegram, **bots não veem mensagens de outros bots**. Num ecossistema com vários agentes (DevOps, web, CRM, etc.), cada um vive numa bolha — não conseguem conversar pela API normal do Telegram.
 
-Além disso, humanos precisam **ver** o que os bots estão trocando entre si, sem adivinhar pelo Kanban.
+Além disso, operadores humanos precisam **ver** o que os bots trocam entre si, sem adivinhar pelo Kanban.
 
 ## A solução em uma frase
 
@@ -17,97 +17,67 @@ Dois plugins trabalham juntos:
 
 ```
 ┌─────────────┐     outbox SQLite      ┌─────────────┐
-│   Matias    │ ─────────────────────► │    Bravo    │
+│  Bot A      │ ─────────────────────► │  Bot B      │
 │  (envia)    │   + task Kanban        │  (worker)   │
 └──────┬──────┘                        └──────┬──────┘
        │                                      │
        │         Grupo Telegram               │
-       └──────────► 📤 Matias enviou          │
-                  ◄── 📥 Bravo respondeu ─────┘
+       └──────────► 📤 Bot A enviou           │
+                  ◄── 📥 Bot B respondeu ─────┘
                          (cada um com seu bot)
 ```
 
-## Fluxo completo (passo a passo)
+## Fluxo completo
 
-### 1. Matias envia uma mensagem cross-bot
+### 1. Bot A envia mensagem cross-bot
 
-Matias chama `crossbot_send(to_bot="bravo", subject="...", body="...")`.
-
-O plugin faz três coisas:
+Chama `crossbot_send(to_bot="agent-beta", subject="...", body="...")`.
 
 | Ação | Onde | Para quê |
 |------|------|----------|
-| Grava na `outbox` | `~/.hermes/data/multi_agent_tg_shared.db` | Bravo vai ler isto |
-| Cria task no Kanban | board `linkedin-content` (configurável) | Dispatcher acorda o worker do Bravo |
-| Posta 📤 no Telegram | Grupo de visibilidade, tópico do Bravo | Você vê que Matias pediu algo |
+| Grava na `outbox` | SQLite compartilhado | Bot B vai ler |
+| Cria task Kanban | board configurável | Dispatcher acorda worker |
+| Posta 📤 no Telegram | Grupo de visibilidade | Operador humano vê o envio |
 
-### 2. Dispatcher Kanban spawna o worker
+### 2. Dispatcher spawna worker do Bot B
 
-A cada ~60 segundos o dispatcher olha o board. Vê uma task `[Cross-Bot #N]` assignada ao `bravo` e inicia uma sessão worker isolada.
+Task `[Cross-Bot #N]` assignada ao profile destino.
 
-O body da task contém a mensagem **e** instruções obrigatórias de como responder.
+### 3. Worker processa
 
-### 3. Worker do Bravo processa
+Contexto inclui `[Pending Messages]` com outbox_id e instruções.
 
-O worker recebe no contexto:
-
-```
-[Pending Messages]
-- ID #66 [2m ago] From matias — Status do site
-  > O site está no ar?
-```
-
-Ele lê, executa (curl, verificação, etc.) e **deve responder antes** de `kanban_complete`.
-
-### 4. Bravo responde
-
-Via terminal (workers não têm a tool `crossbot_respond`):
+### 4. Bot B responde
 
 ```bash
-CROSSBOT_BOT_NAME=bravo python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py respond 66 "Site online, HTTP 200"
+CROSSBOT_BOT_NAME=agent-beta python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py respond N "resposta"
 ```
 
-O plugin:
+Marca outbox `done` e posta 📥 com **token do Bot B**.
 
-- Marca outbox como `done`
-- Posta 📥 no Telegram **com o token do Bravo** — aparece como Bravo, não Matias
+### 5. Visibilidade no grupo
 
-### 5. Você acompanha no grupo
+| Direção | Quem aparece | Onde |
+|---------|--------------|------|
+| 📤 envio | Bot remetente | Tópico do destinatário |
+| 📥 resposta | Bot respondedor | Tópico do respondedor |
 
-Cada bot posta no **seu tópico** do fórum Telegram (configurado em `topic-map.json`):
-
-| Direção | Quem aparece no Telegram | Onde |
-|---------|--------------------------|------|
-| 📤 envio | Bot remetente (ex: Matias) | Tópico do destinatário |
-| 📥 resposta | Bot respondedor (ex: Bravo) | Tópico do respondedor |
-
-## O que cada peça faz
+## Peças do sistema
 
 | Peça | Função |
 |------|--------|
-| **outbox** | Fila de mensagens entre bots (SQLite) |
-| **Kanban task** | Acorda o bot certo via worker |
-| **topic-map.json** | Mapeia `bravo` → tópico 637, handle `@bravos_consult_bot` |
-| **visibility-config.json** | Chat ID do grupo, token fallback |
-| **crossbot_cli.py** | CLI para workers responderem (workaround Bug Hermes #3) |
+| **outbox** | Fila SQLite entre bots |
+| **Kanban task** | Acorda o bot certo |
+| **topic-map.json** | Profile → tópico + handle Telegram |
+| **crossbot_cli.py** | CLI para workers (sem tool no toolset) |
 | **Audit log** | `~/.hermes/logs/kanban-context/crossbot-audit.jsonl` |
 
-## O que NÃO é cross-bot
+## Trade-offs (v2.2.4+)
 
-| Situação | Comportamento |
-|----------|---------------|
-| Você manda `@Bravo o site está no ar?` no grupo | Bravo responde no chat normal — **não** passa pela outbox |
-| Bot A comenta no Kanban | Atividade Kanban injetada no contexto — **não** é mensagem cross-bot |
-| DM entre bot e Franklin | Canal separado — cross-bot é **bot → bot** via outbox |
+| Decisão | Motivo |
+|---------|--------|
+| Token por profile na visibilidade | Remetente correto no Telegram |
+| Sem `reply_to` entre bots diferentes | Limitação da API Telegram |
+| Workers usam terminal + CLI | Hermes core não herda tools de plugin |
 
-## Trade-offs importantes (v2.2.4)
-
-| Decisão | Por quê |
-|---------|---------|
-| Cada bot posta com **seu próprio token** | Telegram mostra o remetente correto (Bravo ≠ Matias) |
-| Sem `reply_to` entre bots diferentes | API Telegram não permite bot A citar mensagem de bot B |
-| Workers usam **terminal + crossbot_cli** | Hermes core não expõe tools de plugin nos workers Kanban |
-
-## Próximo passo
-
-→ [Setup passo a passo](./02-setup-novo-projeto.md) para instalar em um projeto novo.
+→ [Setup passo a passo](./02-setup-novo-projeto.md)

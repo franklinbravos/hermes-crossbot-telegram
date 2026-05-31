@@ -1,20 +1,18 @@
 {
-  "comment": "Modelo para novos projetos — copie para ~/.hermes/plugins/kanban-context/topic-map.json",
-  "chat_id": "-100SUBSTITUA_PELO_CHAT_ID",
+  "comment": "Modelo genérico — copie para ~/.hermes/plugins/kanban-context/topic-map.json",
+  "chat_id": "-100XXXXXXXXXX",
   "topics": {
-    "matias": 0,
-    "bravo": 0,
-    "catalogai": 0,
-    "crm-fast": 0,
-    "dado-seguro": 0,
-    "social-media": 0
+    "orchestrator": 0,
+    "ops": 0,
+    "agent-alpha": 0,
+    "agent-beta": 0,
+    "agent-gamma": 0
   },
   "handles": {
-    "matias": "seu_bot_matias",
-    "bravo": "seu_bot_bravo",
-    "catalogai": "seu_bot_catalogai",
-    "crm-fast": "seu_bot_crm",
-    "dado-seguro": "seu_bot_dado_seguro",
-    "social-media": "seu_bot_social"
+    "orchestrator": "seu_bot_orchestrator",
+    "ops": "seu_bot_ops",
+    "agent-alpha": "seu_bot_alpha",
+    "agent-beta": "seu_bot_beta",
+    "agent-gamma": "seu_bot_gamma"
   }
 }

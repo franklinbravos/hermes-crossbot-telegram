@@ -1,25 +1,35 @@
 # Documentação — Hermes Community Plugins
 
-Guia central para humanos e agentes Hermes que usam **multi-agent-context** + **kanban-context** (cross-bot).
+Guia para operadores humanos e agentes Hermes (**multi-agent-context** + **kanban-context**).
 
-## Comece aqui
+## Handoff de deploy (operador / DevOps)
 
-| Público | Documento | O que você encontra |
-|---------|-----------|---------------------|
-| **Humano (DevOps / gestor)** | [Como funciona](./onboarding/01-como-funciona.md) | Visão geral em linguagem simples |
-| **Humano (setup)** | [Setup passo a passo](./onboarding/02-setup-novo-projeto.md) | Instalar do zero em um projeto novo |
-| **Humano (Telegram)** | [Tópicos e grupo](./onboarding/03-topicos-telegram.md) | Fórum, topic-map, visibilidade |
-| **Agente Hermes (bot)** | [Guia do agente](./onboarding/04-guia-agente-hermes.md) | Regras de comunicação — **leia isto** |
-| **Teste cross-bot** | [Telefone sem fio](./onboarding/05-telefone-sem-fio.md) | Brincadeira + benchmark oficial |
-| **Copiar para SOUL/instructions** | [Prompt do agente](./onboarding/AGENT-SYSTEM-PROMPT.md) | Bloco pronto para colar no perfil |
+**Frase para enviar ao agente operador:**
 
-## Referência técnica
+> Execute `docs/onboarding/HANDOFF-DEPLOY.md` do início ao fim e me envie o feedback do template final.
+
+Documento: **[HANDOFF-DEPLOY.md](./onboarding/HANDOFF-DEPLOY.md)** — pull, deploy, smoke test, telefone sem fio, template de retorno.
+
+---
+
+## Onboarding
+
+| Público | Documento |
+|---------|-----------|
+| Visão geral | [Como funciona](./onboarding/01-como-funciona.md) |
+| Setup do zero | [Setup passo a passo](./onboarding/02-setup-novo-projeto.md) |
+| Tópicos Telegram | [Tópicos e grupo](./onboarding/03-topicos-telegram.md) |
+| Agentes AI | [Guia do agente](./onboarding/04-guia-agente-hermes.md) |
+| Teste benchmark | [Telefone sem fio](./onboarding/05-telefone-sem-fio.md) |
+| SOUL / prompt | [AGENT-SYSTEM-PROMPT.md](./onboarding/AGENT-SYSTEM-PROMPT.md) |
+
+## Referência
 
 | Documento | Conteúdo |
 |-----------|----------|
-| [Feature Map](./reference/FEATURE-MAP.md) | Fluxos end-to-end ligados ao código |
-| [Debug cross-bot](./reference/debug-crossbot.md) | Checklist, env vars, audit log |
-| [topic-map.example.json](./reference/topic-map.example.json) | Modelo de mapeamento bot → tópico |
+| [Feature Map](./reference/FEATURE-MAP.md) | Fluxos ↔ código |
+| [Debug cross-bot](./reference/debug-crossbot.md) | Checklist, env vars |
+| [topic-map.example.json](./reference/topic-map.example.json) | Modelo de config |
 
 ## Plugins
 
@@ -29,14 +39,10 @@ Guia central para humanos e agentes Hermes que usam **multi-agent-context** + **
 | multi-agent-context | [../multi-agent-context/README.md](../multi-agent-context/README.md) |
 | async-delegate | [../async-delegate/README.md](../async-delegate/README.md) |
 
-## Arquivo (histórico de debug)
+## Arquivo
 
-Relatórios de sessões de teste e sagas técnicas — **não use como guia operacional**:
-
-- [archive/crossbot-v220-reply-threading.md](./archive/crossbot-v220-reply-threading.md)
-- [archive/crossbot-v223-deploy-validation.md](./archive/crossbot-v223-deploy-validation.md)
+Relatórios históricos de sessões — **não operacional**: [archive/](./archive/)
 
 ---
 
-**Versão atual do cross-bot:** kanban-context **v2.2.4**  
-**Repositório:** [franklinbravos/hermes-community-plugins](https://github.com/franklinbravos/hermes-community-plugins)
+**Cross-bot:** kanban-context **v2.2.4+**
