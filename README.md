@@ -22,7 +22,8 @@ plugins:
     - kanban-context
 ```
 
-→ Setup completo: [docs/onboarding/02-setup-novo-projeto.md](./docs/onboarding/02-setup-novo-projeto.md)  
+→ Setup: [docs/onboarding/02-instalar-e-adaptar.md](./docs/onboarding/02-instalar-e-adaptar.md)  
+→ Workspace: [docs/onboarding/03-workspace-e-colegas.md](./docs/onboarding/03-workspace-e-colegas.md)
 → Handoff operador: [docs/onboarding/HANDOFF-DEPLOY.md](./docs/onboarding/HANDOFF-DEPLOY.md)
 
 **Teste cross-bot (telefone sem fio):**
@@ -52,6 +53,8 @@ docs/
 |------|------|
 | Hub | [docs/README.md](./docs/README.md) |
 | Como funciona | [01-como-funciona.md](./docs/onboarding/01-como-funciona.md) |
+| Instalar e adaptar | [02-instalar-e-adaptar.md](./docs/onboarding/02-instalar-e-adaptar.md) |
+| Workspace e colegas | [03-workspace-e-colegas.md](./docs/onboarding/03-workspace-e-colegas.md) |
 | Guia do agente | [04-guia-agente-hermes.md](./docs/onboarding/04-guia-agente-hermes.md) |
 | Telefone sem fio | [05-telefone-sem-fio.md](./docs/onboarding/05-telefone-sem-fio.md) · `./scripts/telefone-sem-fio.sh` |
 

@@ -1,54 +1,60 @@
-# Guia do agente Hermes — Cross-bot e tópicos
+# Guia do agente Hermes — Cross-bot e workspace
 
-> Para agentes AI no ecossistema multi-bot. Siga à risca.
+> Para agentes AI em ecossistema **já existente**. Nomes de profiles vêm do ambiente — não há padrão fixo.
 
-## Identidade
+## O que você precisa saber sobre si e os colegas
 
-Você tem um **profile**, **tópico** Telegram, **handle** e acesso ao barramento cross-bot via outbox SQLite.
+Antes de qualquer cross-bot, você deve ter no SOUL:
+
+| Sobre mim | Sobre cada colega |
+|-----------|-------------------|
+| Nome do **profile** Hermes | Profile (endereço cross-bot) |
+| @ Telegram | @ Telegram |
+| **Tópico/departamento** no workspace | Tópico onde atua |
+| Função | Quando acionar |
+
+→ Template: [../reference/mapa-colegas.template.md](../reference/mapa-colegas.template.md)
+
+**Cross-bot usa o profile**, não o @: `send vendas`, não `send @bot_vendas`.
 
 ## Receber trabalho
 
-### Menção no grupo
+### Menção no workspace
 
-Operador escreve `@seu_handle ...` → responda no mesmo tópico.
+Operador escreve `@seu_handle` **no seu tópico** → responda ali.
 
 ### Cross-bot
 
 ```
 [Pending Messages]
-- ID #71 From ops — Assunto
-  > corpo da mensagem
+- ID #71 From profile-colega — Assunto
 ```
 
-→ Processe e responda via crossbot (não só no grupo).
+→ `crossbot_cli respond` antes de `kanban_complete`.
 
 ## Responder cross-bot (OBRIGATÓRIO)
-
-Workers Kanban **não** têm tool `crossbot_respond`:
 
 ```bash
 CROSSBOT_BOT_NAME=SEU_PROFILE python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py respond OUTBOX_ID "resposta"
 ```
 
-Ordem: processar → **respond** → kanban_complete
-
 **NUNCA:** `from kanban_context import ...` · só kanban_comment · DM sem pedido
 
-## Enviar cross-bot
+## Enviar a um colega
+
+Use o **profile** da tabela de colegas:
 
 ```bash
-CROSSBOT_BOT_NAME=SEU_PROFILE python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py send DESTINO "Assunto" "Corpo"
+CROSSBOT_BOT_NAME=SEU_PROFILE python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py send PROFILE_COLEGA "Assunto" "Corpo"
 ```
 
+## Coordenação — não se perca
+
+- `[Response Coordination]` diz que **outro** colega foi @mencionado → **silêncio**
+- Você foi @mencionado ou é o bot do tópico → responda
+- Dúvida sobre quem acionar → consulte mapa de colegas no SOUL
+
 ## Telefone sem fio
-
-Subject `[TelefoneSemFio]` ou body `TELEFONE_SEM_FIO`:
-
-1. +2 palavras à phrase
-2. Atualize played
-3. Sorteie próximo (roster - played)
-4. Repasse ou devolva ao orchestrator com `status: COMPLETE`
-5. crossbot_cli respond antes de kanban_complete
 
 → [05-telefone-sem-fio.md](./05-telefone-sem-fio.md)
 
@@ -56,18 +62,8 @@ Subject `[TelefoneSemFio]` ou body `TELEFONE_SEM_FIO`:
 
 | Bloco | Significado |
 |-------|-------------|
-| `[Recent Group History]` | Histórico Telegram |
-| `[Recent Kanban Activity]` | Boards |
+| `[Recent Group History]` | Histórico do workspace |
 | `[Pending Messages]` | Cross-bot pendente |
 | `[Response Coordination]` | Quem deve falar |
 
-## Fluxograma
-
-```
-[Pending Messages]? → crossbot_cli respond → kanban_complete
-@mention?           → responder no grupo
-Response Coord "don't respond"? → silêncio
-Task normal?        → kanban_complete
-```
-
-→ SOUL: [AGENT-SYSTEM-PROMPT.md](./AGENT-SYSTEM-PROMPT.md)
+→ SOUL completo: [AGENT-SYSTEM-PROMPT.md](./AGENT-SYSTEM-PROMPT.md) · Workspace: [03-workspace-e-colegas.md](./03-workspace-e-colegas.md)

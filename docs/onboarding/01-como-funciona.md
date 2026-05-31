@@ -80,4 +80,14 @@ Marca outbox `done` e posta 📥 com **token do Bot B**.
 | Sem `reply_to` entre bots diferentes | Limitação da API Telegram |
 | Workers usam terminal + CLI | Hermes core não herda tools de plugin |
 
-→ [Setup passo a passo](./02-setup-novo-projeto.md)
+## Pré-requisitos humanos (obrigatórios)
+
+| Item | Detalhe |
+|------|---------|
+| **Workspace** fórum Telegram com tópico por agente | [03-workspace-e-colegas.md](./03-workspace-e-colegas.md) |
+| **Mapa de colegas** no SOUL de cada bot | profile, @, tópico, função |
+| **`topic-map.json`** alinhado aos profiles existentes | Não exige nomes padronizados |
+
+Não é necessário criar agentes novos se o ambiente já os tem — só **inventariar e adequar**.
+
+→ [Onboarding — adaptar ambiente existente](./02-instalar-e-adaptar.md#caminho-a--adaptar-ambiente-existente)

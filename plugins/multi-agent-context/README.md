@@ -18,5 +18,5 @@ MULTI_AGENT_TG_DB_PATH=~/.hermes/data/multi_agent_tg_shared.db   # MESMO path em
 
 ## Documentação
 
-- [Setup](../../docs/onboarding/02-setup-novo-projeto.md)
-- [Tópicos](../../docs/onboarding/03-topicos-telegram.md)
+- [Setup](../../docs/onboarding/02-instalar-e-adaptar.md)
+- [Workspace e colegas](../../docs/onboarding/03-workspace-e-colegas.md)

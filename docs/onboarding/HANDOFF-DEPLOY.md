@@ -5,7 +5,7 @@
 
 Execute este documento **do início ao fim**. Ao terminar, preencha o [template de feedback](#template-de-feedback) e envie ao operador humano.
 
-**Documentação relacionada:** [02-setup-novo-projeto.md](./02-setup-novo-projeto.md) · [05-telefone-sem-fio.md](./05-telefone-sem-fio.md) · [AGENT-SYSTEM-PROMPT.md](./AGENT-SYSTEM-PROMPT.md)
+**Documentação relacionada:** [02-instalar-e-adaptar.md](./02-instalar-e-adaptar.md) · [03-workspace-e-colegas.md](./03-workspace-e-colegas.md) · [05-telefone-sem-fio.md](./05-telefone-sem-fio.md)
 
 ---
 
@@ -27,7 +27,22 @@ Reinicie **todos** os gateways dos profiles ativos.
 
 ---
 
-## 2. Verificações pós-deploy
+## 2. Inventário (ambiente existente)
+
+Liste profiles **já instalados** — não crie agentes novos:
+
+```bash
+ls ~/.hermes/profiles/
+```
+
+- [ ] Tabela preenchida: profile · @ Telegram · tópico · função ([02-instalar-e-adaptar](./02-instalar-e-adaptar.md#caminho-a--adaptar-ambiente-existente))
+- [ ] `topic-map.json` reflete os nomes **reais** das pastas
+- [ ] SOUL de cada agente com [mapa de colegas](../reference/mapa-colegas.template.md)
+- [ ] Workspace fórum com tópico por departamento ([03-workspace-e-colegas](./03-workspace-e-colegas.md))
+
+---
+
+## 3. Verificações pós-deploy
 
 ```bash
 python3 -c "
@@ -51,7 +66,7 @@ Checklist:
 
 ---
 
-## 3. Atualizar instruções dos agentes
+## 4. Atualizar instruções dos agentes
 
 Colar o bloco de [AGENT-SYSTEM-PROMPT.md](./AGENT-SYSTEM-PROMPT.md) no SOUL/instructions de **cada** profile listado em `topic-map.json`.
 
@@ -62,7 +77,7 @@ Atualize a tabela de bots no prompt com os profiles **deste** ambiente.
 
 ---
 
-## 4. Smoke test (cross-bot simples)
+## 5. Smoke test (cross-bot simples)
 
 Substitua `{ORIGEM}` e `{DESTINO}` pelos profiles reais (ex: primeiro e segundo da lista):
 
@@ -92,7 +107,7 @@ Anote o **outbox ID** do smoke test: ___________
 
 ---
 
-## 5. Telefone sem fio (benchmark oficial)
+## 6. Telefone sem fio (benchmark oficial)
 
 Leia [05-telefone-sem-fio.md](./05-telefone-sem-fio.md) antes de executar.
 
@@ -139,7 +154,7 @@ grep TelefoneSemFio ~/.hermes/logs/kanban-context/crossbot-audit.jsonl | tail -2
 
 ---
 
-## 6. Template de feedback
+## 7. Template de feedback
 
 Copie, preencha e envie ao operador humano:
 

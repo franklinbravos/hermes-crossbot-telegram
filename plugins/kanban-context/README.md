@@ -33,6 +33,6 @@ CROSSBOT_BOT_NAME=SEU_PROFILE python3 ~/.hermes/plugins/kanban-context/crossbot_
 
 ## Documentação
 
-- [Setup](../../docs/onboarding/02-setup-novo-projeto.md)
+- [Setup](../../docs/onboarding/02-instalar-e-adaptar.md)
 - [Guia do agente](../../docs/onboarding/04-guia-agente-hermes.md)
 - [Debug](../../docs/reference/debug-crossbot.md)

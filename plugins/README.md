@@ -32,7 +32,7 @@ plugins:
     - kanban-context
 ```
 
-Setup completo: [../docs/onboarding/02-setup-novo-projeto.md](../docs/onboarding/02-setup-novo-projeto.md)
+Setup: [../docs/onboarding/02-instalar-e-adaptar.md](../docs/onboarding/02-instalar-e-adaptar.md)
 
 ## Versões
 
