@@ -30,7 +30,7 @@ ORCHESTRATOR=outro-profile PHRASE="GATO BONITO" ./scripts/telefone-sem-fio.sh
 3. `~/.hermes/active_profile` — profile sticky do Hermes
 4. campo `orchestrator` no `topic-map.json` (gravado pelo `configure-crossbot.sh`)
 
-Ou seja: se **matias** pedir e rodar o script no contexto dela, o orchestrator será **matias** — sem precisar passar variável.
+Ou seja: se o **profile orquestrador** pedir e rodar o script no contexto dele, o orchestrator será detectado automaticamente — sem precisar passar variável.
 
 O script lê o **roster** de `topic-map.json` (todos os profiles exceto o orchestrator detectado), sorteia o primeiro jogador e dispara o `crossbot_send`.
 

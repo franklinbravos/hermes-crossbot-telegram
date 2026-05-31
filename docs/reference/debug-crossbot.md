@@ -25,7 +25,7 @@ Dispatcher (~60s) → worker receiver
 ```bash
 # Obrigatório — MESMO path em todos os profiles
 MULTI_AGENT_TG_DB_PATH=~/.hermes/data/multi_agent_tg_shared.db
-CROSSBOT_BOT_NAME=bravo
+CROSSBOT_BOT_NAME=agente-a
 
 # Telegram
 TELEGRAM_BOT_TOKEN=...              # por profile — visibilidade (v2.3.0+)
@@ -55,7 +55,7 @@ sqlite3 ~/.hermes/data/multi_agent_tg_shared.db \
 
 ### 2. Nomes batem?
 
-`crossbot_send(to_bot="bravo")` → receiver precisa `CROSSBOT_BOT_NAME=bravo`
+`crossbot_send(to_bot="agente-b")` → receiver precisa `CROSSBOT_BOT_NAME=agente-b`
 
 ### 3. Audit log
 

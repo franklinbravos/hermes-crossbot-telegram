@@ -25,7 +25,7 @@ Options:
 
 Example:
   ./scripts/configure-crossbot.sh
-  ./scripts/configure-crossbot.sh --orchestrator matias --players sofia,iago --yes
+  ./scripts/configure-crossbot.sh --orchestrator coordenador --players agente-a,agente-b --yes
 EOF
 }
 
@@ -117,8 +117,8 @@ pick_players() {
 }
 
 read_chat_id() {
-  if [[ -n "$CHAT_ID" ]]; then
-    echo "$CHAT_ID"
+  if [[ -n "$CHAT_ID" ]] || $ASSUME_YES; then
+    echo "${CHAT_ID:-}"
     return
   fi
 

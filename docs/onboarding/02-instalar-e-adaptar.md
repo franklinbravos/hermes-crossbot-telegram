@@ -116,8 +116,8 @@ Modo não-interativo (CI / repeat):
 
 ```bash
 ./scripts/configure-crossbot.sh \
-  --orchestrator matias \
-  --players sofia,iago \
+  --orchestrator coordenador \
+  --players agente-a,agente-b \
   --chat-id -100XXXXXXXXXX \
   --yes
 ```

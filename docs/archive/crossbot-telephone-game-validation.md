@@ -15,7 +15,7 @@ we ran a **telephone game** (telefone sem fio) to validate that kanban workers c
 1. Start with 2 words
 2. Each agent adds EXACTLY 2 words (never change existing words)
 3. Agent chooses NEXT agent randomly from remaining list
-4. When no agents remain, send back to Matias (ti)
+4. When no agents remain, send back to the orchestrator profile
 5. Use `crossbot_cli.py send` via terminal to forward
 
 ---
@@ -28,7 +28,7 @@ TAREFA: TELEFONE SEM FIO
 1. Adicione 2 palavras: GATO BONITO → GATO BONITO [SUAS_PALAVRAS]
 2. Escolha aleatoriamente UM da lista: [catalogai, crm-fast, dado-seguro, social-media]
 3. Execute no terminal:
-CROSSBOT_BOT_NAME=bravos_consult_bot python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py send ESCOLHA "Telefone sem fio" "INSTRUÇÃO_COMPLETA_ATUALIZADA"
+CROSSBOT_BOT_NAME=orchestrator python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py send ESCOLHA "Telefone sem fio" "INSTRUÇÃO_COMPLETA_ATUALIZADA"
 4. Se lista vazia, envie para ti
 
 RESPONDA SOMENTE: confirmou envio + frase atualizada + quem escolheu
@@ -49,12 +49,12 @@ RESPONDA SOMENTE: confirmou envio + frase atualizada + quem escolheu
 
 | Outbox | From | To | Added Words | Status |
 |--------|------|-----|-------------|--------|
-| #79 | Matias | Bravo | *(start: GATO BONITO)* | ✅ done |
+| #79 | Orchestrator | Agente-A | *(start: GATO BONITO)* | ✅ done |
 | #80 | Bravo | Dado-Seguro | DANÇA SAMBA | ✅ done |
 | #82 | Dado-Seguro | CRM-Fast | COM ESTILO VIRA MODA | ✅ done |
 | #83 | CRM-Fast | Catalogai | VIROU FEBRE | ✅ done |
 | #85 | Catalogai | Social-Media | E CONTAGIOU | ✅ done |
-| #87 | Social-Media | TI (Matias) | ATRAI ENGAJA | ✅ done |
+| #87 | Agente-D | Orchestrator | ATRAI ENGAJA | ✅ done |
 
 **Final phrase:** `GATO BONITO DANÇA SAMBA COM ESTILO VIRA MODA VIROU FEBRE E CONTAGIOU ATRAI ENGAJA SERVIDOR ESTÁVEL`
 
@@ -64,11 +64,11 @@ RESPONDA SOMENTE: confirmou envio + frase atualizada + quem escolheu
 
 | Outbox | From | To | Added Words | Status |
 |--------|------|-----|-------------|--------|
-| #81 | Matias | Bravo | *(start: GATO BONITO)* | ✅ done |
+| #81 | Orchestrator | Agente-A | *(start: GATO BONITO)* | ✅ done |
 | #84 | Bravo | CRM-Fast | DANÇA SAMBA COM FÉ | ✅ done |
 | #86 | CRM-Fast | Social-Media | E ENCANTA | ✅ done |
 
-**Why two chains:** Matias sent to Bravo twice (#79 and #81), creating parallel chains.
+**Why two chains:** Orchestrator sent to Agente-A twice (#79 and #81), creating parallel chains.
 This is **Pitfall 28** — always check for pending outbox before sending.
 
 ---
@@ -81,7 +81,7 @@ This is **Pitfall 28** — always check for pending outbox before sending.
 | Dado-Seguro | CRM-Fast | Random from remaining |
 | CRM-Fast | Catalogai | Random from remaining |
 | Catalogai | Social-Media | Last remaining |
-| Social-Media | TI (Matias) | No remaining agents → send back to origin |
+| Agente-D | Orchestrator | No remaining agents → send back to origin |
 
 ---
 
@@ -129,12 +129,12 @@ if cur.fetchone():
 the outbox stays `pending` indefinitely if the target bot's worker is busy
 (in active conversation with user).
 
-**Symptom:** Outbox #87 (social-media→ti) was `pending` because TI's worker
-(Matias) was busy talking to Franklin.
+**Symptom:** Outbox #87 (agente-d→orchestrator) was `pending` because the orchestrator's worker
+was busy talking to the human operator.
 
-**Fix:** The orchestrator (Matias) must manually process the pending outbox:
+**Fix:** The orchestrator must manually process the pending outbox:
 ```bash
-CROSSBOT_BOT_NAME=matias_bravos_dev_bot python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py respond 87 "sua resposta"
+CROSSBOT_BOT_NAME=orchestrator python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py respond 87 "sua resposta"
 ```
 
 **Implication:** In autonomous chains, if the last bot sends to the orchestrator,

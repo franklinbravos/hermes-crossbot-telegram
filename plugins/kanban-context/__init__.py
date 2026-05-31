@@ -497,7 +497,7 @@ def _format_worker_crossbot_instruction(outbox_id: int, to_bot: str) -> str:
         f'   CROSSBOT_BOT_NAME={to_bot} python3 "{cli}" respond {outbox_id} "YOUR RESPONSE"\n'
         f"3. Call the above BEFORE kanban_complete\n"
         f"4. Do NOT use: from kanban_context import ... (module does not exist)\n"
-        f"5. Do NOT message Franklin in DM unless explicitly asked"
+        f"5. Do NOT message the human operator in DM unless explicitly asked"
     )
 
 
@@ -658,8 +658,8 @@ def _get_telegram_token() -> Optional[str]:
 def _resolve_visibility_token(post_as_bot: Optional[str] = None) -> Optional[str]:
     """Pick token so Telegram shows the correct bot as sender.
 
-    When post_as_bot is set (e.g. 'bravo' for responses), use that profile's
-    token so the message appears from Bravo — not from the visibility bot.
+    When post_as_bot is set (e.g. 'agente-b' for responses), use that profile's
+    token so the message appears from that bot — not from the visibility bot.
     Falls back to CROSSBOT_VISIBILITY_TOKEN when profile token is missing.
     """
     if post_as_bot:
@@ -684,11 +684,11 @@ def _post_visibility_message(
     """Post a cross-bot message to the Telegram group for human visibility.
 
     post_as_bot: profile name whose TELEGRAM_BOT_TOKEN to use (shows as that bot
-    in Telegram). For responses, pass the responder (e.g. bravo). For sends,
-    pass the sender (e.g. matias). Falls back to visibility token if missing.
+    in Telegram). For responses, pass the responder (e.g. agente-b). For sends,
+    pass the sender (e.g. coordenador). Falls back to visibility token if missing.
 
     reply_to is skipped when post_as_bot is set — different bot cannot reply
-    to another bot's message; avoids Matias appearing as self-reply.
+    to another bot's message; avoids the sender appearing as self-reply.
     """
     import urllib.error
     import urllib.request
@@ -1389,7 +1389,7 @@ def _get_bot_mention_names() -> List[str]:
     """Return a list of identifiers this bot can be @mentioned by.
 
     Includes:
-    - The explicit CROSSBOT_BOT_NAME (e.g. 'Matias')
+    - The explicit CROSSBOT_BOT_NAME (e.g. 'Coordenador')
     - The profile name (e.g. 'ti')
     - Any names listed in KANBAN_CONTEXT_MENTION_MAP for this bot
     """
@@ -1442,7 +1442,7 @@ def _is_bot_mentioned(user_message: str) -> bool:
     """Check if this bot is @mentioned in the user message.
 
     Uses word-boundary matching to avoid false positives
-    (e.g. 'bravo' in '@matias_bravos_dev_bot').
+    (e.g. 'agente-a' in '@bot_agente_a').
     """
     if not user_message:
         return False
@@ -1790,7 +1790,7 @@ def _inject_kanban_context(**kwargs) -> Optional[Dict[str, str]]:
 def _auto_detect_mentions(**kwargs) -> Optional[Dict[str, str]]:
     """pre_llm_call hook — detect @mentions of other bots and auto-create kanban tasks.
 
-    When a user message mentions another bot (e.g., @bravos_consult_bot),
+    When a user message mentions another bot (e.g., @bot_agente_b),
     this hook creates a kanban task for the mentioned bot so the dispatcher
     picks it up and spawns a worker.
 
@@ -2189,7 +2189,7 @@ def register(ctx) -> None:
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "to_bot": {"type": "string", "description": "Target profile name (e.g. bravo)."},
+                    "to_bot": {"type": "string", "description": "Target profile name (e.g. agente-b)."},
                     "subject": {"type": "string", "description": "Short subject."},
                     "body": {"type": "string", "description": "Full message body."},
                     "kanban_task_id": {"type": "string", "description": "Optional existing task ID."},
