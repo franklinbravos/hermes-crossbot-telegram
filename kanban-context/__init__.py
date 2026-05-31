@@ -181,6 +181,66 @@ def _open_shared_db():
     return conn
 
 
+# ---------------------------------------------------------------------------
+# Cross-bot visibility — post messages to Telegram group for human oversight
+# ---------------------------------------------------------------------------
+
+def _get_visibility_chat() -> Optional[str]:
+    """Return the Telegram chat ID where cross-bot messages should be visible.
+
+    Reads from CROSSBOT_VISIBILITY_CHAT env var.
+    If unset, cross-bot messages remain invisible (legacy mode).
+    """
+    chat = os.environ.get("CROSSBOT_VISIBILITY_CHAT", "").strip()
+    return chat if chat else None
+
+
+def _get_telegram_token() -> Optional[str]:
+    """Return the Telegram Bot API token for this bot process."""
+    return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() or None
+
+
+def _post_visibility_message(text: str, direction: str = "sent") -> bool:
+    """Post a cross-bot message to the Telegram group for human visibility.
+
+    Args:
+        text: The formatted message to post
+        direction: "sent" or "responded"
+
+    Returns True if posted successfully, False if not configured or failed.
+    """
+    chat_id = _get_visibility_chat()
+    token = _get_telegram_token()
+    if not chat_id or not token:
+        return False
+
+    prefix = "📤" if direction == "sent" else "📥"
+    full_text = f"{prefix} **Cross-Bot**\n\n{text}"
+
+    try:
+        import urllib.request
+        import json as _json
+        data = _json.dumps({
+            "chat_id": chat_id,
+            "text": full_text,
+            "parse_mode": "Markdown",
+        }).encode("utf-8")
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        req = urllib.request.Request(url, data=data, method="POST")
+        req.add_header("Content-Type", "application/json")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            resp_body = resp.read().decode("utf-8")
+            result = _json.loads(resp_body)
+            if result.get("ok"):
+                logger.debug("crossbot-visibility: posted to chat %s (%s)", chat_id, direction)
+                return True
+            logger.warning("crossbot-visibility: API error: %s", result.get("description", "unknown"))
+            return False
+    except Exception as exc:
+        logger.warning("crossbot-visibility: failed to post: %s", exc)
+        return False
+
+
 def crossbot_send(
     to_bot: str,
     subject: str,
@@ -213,6 +273,17 @@ def crossbot_send(
             "crossbot: sent message #%d from '%s' to '%s' (subject='%s', kanban=%s)",
             row_id, from_bot, to_bot, subject[:60], kanban_task_id or "none",
         )
+
+        # Post visibility message to Telegram group
+        vis_text = (
+            f"**From:** {from_bot}\n"
+            f"**To:** {to_bot}\n"
+            f"**Subject:** {subject}\n\n"
+            f"{body}\n\n"
+            f"└─ *ID:* #{row_id}"
+        )
+        _post_visibility_message(vis_text, "sent")
+
         return row_id
     finally:
         conn.close()
@@ -231,6 +302,12 @@ def crossbot_respond(outbox_id: int, response_text: str) -> bool:
     conn = _open_shared_db()
     now = time.time()
     try:
+        # Get original message details for visibility
+        orig = conn.execute(
+            "SELECT from_bot, to_bot, subject FROM outbox WHERE id=?",
+            (outbox_id,),
+        ).fetchone()
+
         cur = conn.execute(
             "UPDATE outbox SET status='done', response_text=?, completed_at=? WHERE id=?",
             (response_text[:2000], now, outbox_id),
@@ -239,7 +316,19 @@ def crossbot_respond(outbox_id: int, response_text: str) -> bool:
         if cur.rowcount == 0:
             logger.warning("crossbot: message #%d not found", outbox_id)
             return False
+
         logger.info("crossbot: message #%d responded (%d chars)", outbox_id, len(response_text))
+
+        # Post visibility message to Telegram group
+        if orig:
+            vis_text = (
+                f"**From:** {orig[1]} → **To:** {orig[0]}\n"
+                f"**Subject:** {orig[2]}\n"
+                f"**Response:**\n{response_text}\n\n"
+                f"└─ *ID:* #{outbox_id}"
+            )
+            _post_visibility_message(vis_text, "responded")
+
         return True
     finally:
         conn.close()
@@ -1176,6 +1265,22 @@ def _validate_env_vars(vr: ValidationResult) -> None:
         except (ValueError, TypeError):
             vr.warnings.append(
                 f"{key}={raw} is not a valid integer — using default ({default})."
+            )
+
+    # Validate visibility config (optional, advisory only)
+    vis_chat = os.environ.get("CROSSBOT_VISIBILITY_CHAT", "").strip()
+    if vis_chat:
+        bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+        if not bot_token:
+            vr.warnings.append(
+                "CROSSBOT_VISIBILITY_CHAT is set but TELEGRAM_BOT_TOKEN is missing. "
+                "Cross-bot messages will be written to the outbox but NOT posted "
+                "to the Telegram group."
+            )
+        else:
+            logger.info(
+                "kanban-context: visibility enabled — cross-bot messages will "
+                "be posted to chat %s", vis_chat,
             )
 
 
