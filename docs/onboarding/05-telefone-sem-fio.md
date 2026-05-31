@@ -19,6 +19,10 @@ ORCHESTRATOR=ops PHRASE="GATO BONITO" ./scripts/telefone-sem-fio.sh
 
 O script lê o **roster** de `~/.hermes/plugins/kanban-context/topic-map.json` (todos os profiles exceto `orchestrator`), sorteia o primeiro jogador e dispara o `crossbot_send`.
 
+**Pré-requisito:** `./scripts/setup-crossbot-board.sh` (board Kanban para acordar workers)
+
+**Erro comum:** `unable to open database file` → board não existe. Rode o setup e repita.
+
 **Frase para pedir ao bot orchestrator no chat:**
 
 > Roda telefone sem fio: `PHRASE="O rato roeu" ~/hermes-community-plugins/scripts/telefone-sem-fio.sh`

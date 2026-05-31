@@ -49,7 +49,9 @@ import html
 import json
 import logging
 import os
+import shutil
 import sqlite3
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -103,6 +105,90 @@ def _kanban_db() -> Path:
 
 def _boards_dir() -> Path:
     return _real_hermes_home() / "kanban" / "boards"
+
+
+def _crossbot_kanban_board() -> str:
+    """Kanban board used to dispatch cross-bot workers."""
+    return os.environ.get("CROSSBOT_KANBAN_BOARD", "cross-bot").strip() or "cross-bot"
+
+
+def _hermes_cli() -> str:
+    """Path to the Hermes CLI (uses its Python 3.11+ venv internally)."""
+    return os.environ.get("HERMES_CLI", "").strip() or shutil.which("hermes") or "hermes"
+
+
+def _ensure_crossbot_kanban_board() -> str:
+    """Ensure the cross-bot Kanban board exists via ``hermes kanban boards create``."""
+    board = _crossbot_kanban_board()
+    db_path = _real_hermes_home() / "kanban" / "boards" / board / "kanban.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    proc = subprocess.run(
+        [
+            _hermes_cli(),
+            "kanban",
+            "boards",
+            "create",
+            board,
+            "--name",
+            "Cross-Bot Messages",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0 and "already exists" not in (proc.stdout + proc.stderr).lower():
+        raise RuntimeError(
+            proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"
+        )
+
+    if not db_path.is_file():
+        raise FileNotFoundError(
+            f"kanban board database missing at {db_path}. "
+            f"Run: hermes kanban boards create {board}"
+        )
+    return board
+
+
+def _create_crossbot_kanban_task(
+    *,
+    title: str,
+    body: str,
+    assignee: str,
+    created_by: str,
+    initial_status: str = "running",
+) -> str:
+    """Create a Kanban task via ``hermes kanban create`` (avoids importing kanban_db)."""
+    board = _ensure_crossbot_kanban_board()
+    proc = subprocess.run(
+        [
+            _hermes_cli(),
+            "kanban",
+            "--board",
+            board,
+            "create",
+            title,
+            "--body",
+            body,
+            "--assignee",
+            assignee,
+            "--created-by",
+            created_by,
+            "--initial-status",
+            initial_status,
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"
+        )
+    data = json.loads(proc.stdout)
+    task_id = data.get("id")
+    if not task_id:
+        raise RuntimeError(f"hermes kanban create returned no task id: {proc.stdout[:200]}")
+    return str(task_id)
 
 
 def _shared_db_path() -> str:
@@ -270,29 +356,6 @@ def _auto_create_task_from_mention(
         conn.close()
 
     try:
-        _kc_paths_to_try = [
-            str(Path(__file__).parent.parent.parent / "hermes-agent"),
-            str(Path.home() / ".hermes" / "hermes-agent"),
-        ]
-        for _kp in _kc_paths_to_try:
-            if _kp not in sys.path:
-                sys.path.insert(0, _kp)
-
-        from hermes_cli.kanban_db import (
-            create_task as _hermes_create_task,
-            board_exists as _board_exists,
-            create_board as _create_board,
-            kanban_db_path as _kanban_db_path,
-        )
-
-        _kc_board = "linkedin-content"
-        if not _board_exists(_kc_board):
-            try:
-                _create_board(_kc_board, display_name="Cross-Bot Messages")
-            except Exception:
-                pass
-
-        # Build task body with outbox_id and instruction to respond
         _kc_body = (
             f"[AUTO-MENTION from @{from_bot}]\n"
             f"Outbox ID: {outbox_id}\n\n"
@@ -301,38 +364,32 @@ def _auto_create_task_from_mention(
             f"{_format_worker_crossbot_instruction(outbox_id, to_bot)}"
         )
 
-        _kc_db_path = _kanban_db_path(_kc_board)
-        _kc_conn = sqlite3.connect(str(_kc_db_path), timeout=5)
+        _task_id = _create_crossbot_kanban_task(
+            title=f"[Mention] @{from_bot} → @{to_bot}",
+            body=_kc_body,
+            assignee=to_bot,
+            created_by=from_bot,
+            initial_status="running",
+        )
+
+        # Update outbox with kanban_task_id
+        conn2 = _open_shared_db()
         try:
-            _task_id = _hermes_create_task(
-                _kc_conn,
-                title=f"[Mention] @{from_bot} → @{to_bot}",
-                body=_kc_body,
-                assignee=to_bot,
-                created_by=from_bot,
-                initial_status="running",
+            conn2.execute(
+                "UPDATE outbox SET kanban_task_id=? WHERE id=?",
+                (_task_id, outbox_id),
             )
-
-            # Update outbox with kanban_task_id
-            conn2 = _open_shared_db()
-            try:
-                conn2.execute(
-                    "UPDATE outbox SET kanban_task_id=? WHERE id=?",
-                    (_task_id, outbox_id),
-                )
-                conn2.commit()
-            finally:
-                conn2.close()
-
-            logger.info(
-                "kanban-context: auto-created task %s for @%s (mentioned by @%s, outbox #%d)",
-                _task_id, to_bot, from_bot, outbox_id,
-            )
-            return _task_id
+            conn2.commit()
         finally:
-            _kc_conn.close()
+            conn2.close()
+
+        logger.info(
+            "kanban-context: auto-created task %s for @%s (mentioned by @%s, outbox #%d)",
+            _task_id, to_bot, from_bot, outbox_id,
+        )
+        return _task_id
     except Exception as exc:
-        logger.warning("kanban-context: failed to auto-create task: %s", exc)
+        logger.warning("kanban-context: failed to auto-create task: %s", exc, exc_info=True)
         return None
 
 
@@ -780,31 +837,6 @@ def crossbot_send(
     # Auto-create kanban task if not provided
     if not kanban_task_id:
         try:
-            # Use Hermes kanban API to create the task
-            _kc_paths_to_try = [
-                str(Path(__file__).parent.parent.parent / "hermes-agent"),
-                str(Path.home() / ".hermes" / "hermes-agent"),
-            ]
-            for _kp in _kc_paths_to_try:
-                if _kp not in sys.path:
-                    sys.path.insert(0, _kp)
-
-            from hermes_cli.kanban_db import (
-                create_task as _hermes_create_task,
-                board_exists as _board_exists,
-                create_board as _create_board,
-                kanban_db_path as _kanban_db_path,
-            )
-
-            _kc_board = "linkedin-content"
-
-            if not _board_exists(_kc_board):
-                try:
-                    _create_board(_kc_board, display_name="Cross-Bot Messages")
-                except Exception:
-                    pass
-
-            # Build kanban task body with OUTBOX_ID + instruction
             _kc_body = (
                 f"[CROSS-BOT MESSAGE #{row_id}]\n"
                 f"From: {from_bot}\n"
@@ -815,29 +847,24 @@ def crossbot_send(
                 f"{_format_worker_crossbot_instruction(row_id, to_bot)}"
             )
 
-            _kc_db_path = _kanban_db_path(_kc_board)
-            _kc_conn = _sqlite3.connect(str(_kc_db_path), timeout=5)
-            try:
-                _task_id = _hermes_create_task(
-                    _kc_conn,
-                    title=f"[Cross-Bot] {subject[:150]}",
-                    body=_kc_body,
-                    assignee=to_bot,
-                    created_by=from_bot,
-                    initial_status="running",
-                )
-                kanban_task_id = _task_id
-                logger.info(
-                    "crossbot: created kanban task %s for '%s' in board '%s' "
-                    "(outbox #%d)",
-                    _task_id, to_bot, _kc_board, row_id,
-                )
-            finally:
-                _kc_conn.close()
+            _task_id = _create_crossbot_kanban_task(
+                title=f"[Cross-Bot] {subject[:150]}",
+                body=_kc_body,
+                assignee=to_bot,
+                created_by=from_bot,
+                initial_status="running",
+            )
+            kanban_task_id = _task_id
+            logger.info(
+                "crossbot: created kanban task %s for '%s' in board '%s' "
+                "(outbox #%d)",
+                _task_id, to_bot, _crossbot_kanban_board(), row_id,
+            )
         except Exception as exc:
             logger.warning(
-                "crossbot: failed to auto-create kanban task via Hermes API: %s",
+                "crossbot: failed to auto-create kanban task via Hermes CLI: %s",
                 exc,
+                exc_info=True,
             )
 
     # Update outbox row with kanban_task_id
@@ -1931,7 +1958,7 @@ def _validate_kanban_db(vr: ValidationResult) -> None:
     vr.warnings.append(
         f"No kanban database found at {default} and no boards dir at {boards}. "
         "Kanban activity injection will be empty until a board is created. "
-        "Use 'hermes kanban create-board <name>' to create one."
+        "Use 'hermes kanban boards create <name>' to create one."
     )
 
 

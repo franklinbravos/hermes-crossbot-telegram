@@ -4,6 +4,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/resolve-python.sh
+source "${REPO_ROOT}/scripts/lib/resolve-python.sh"
+PYTHON="$(resolve_hermes_python)"
 CLI="${CROSSBOT_CLI:-${HOME}/.hermes/plugins/kanban-context/crossbot_cli.py}"
 TOPIC_MAP="${TOPIC_MAP:-${HOME}/.hermes/plugins/kanban-context/topic-map.json}"
 ORCHESTRATOR="${CROSSBOT_BOT_NAME:-${ORCHESTRATOR:-orchestrator}}"
@@ -24,7 +27,7 @@ if [[ ! -f "$TOPIC_MAP" ]]; then
   exit 1
 fi
 
-readarray -t PLAYERS < <(python3 - "$TOPIC_MAP" "$ORCHESTRATOR" <<'PY'
+readarray -t PLAYERS < <("$PYTHON" - "$TOPIC_MAP" "$ORCHESTRATOR" <<'PY'
 import json, sys
 path, orch = sys.argv[1], sys.argv[2]
 with open(path) as f:
@@ -60,7 +63,7 @@ echo "  roster:       ${ROSTER}"
 echo "  first player: ${FIRST}"
 echo ""
 
-CROSSBOT_BOT_NAME="${ORCHESTRATOR}" python3 "$CLI" \
+CROSSBOT_BOT_NAME="${ORCHESTRATOR}" "$PYTHON" "$CLI" \
   send "${FIRST}" \
   "[TelefoneSemFio] round=${ROUND}" \
   "${BODY}"

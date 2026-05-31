@@ -33,7 +33,7 @@ CROSSBOT_VISIBILITY_CHAT=-100...
 CROSSBOT_VISIBILITY_TOKEN=...       # fallback se profile sem token
 
 # Kanban dispatch
-CROSSBOT_KANBAN_BOARD=linkedin-content
+CROSSBOT_KANBAN_BOARD=cross-bot   # default; board must exist — see setup-crossbot-board.sh
 
 # Debug
 CROSSBOT_AUDIT_LOG=~/.hermes/logs/kanban-context/crossbot-audit.jsonl
@@ -75,7 +75,7 @@ tail -20 ~/.hermes/logs/kanban-context/crossbot-audit.jsonl
 Bug clássico — worker ignorou crossbot. Verifique task body:
 
 ```bash
-sqlite3 ~/.hermes/kanban/boards/linkedin-content/kanban.db \
+sqlite3 ~/.hermes/kanban/boards/cross-bot/kanban.db \
   "SELECT title, body FROM tasks WHERE title LIKE '%Cross-Bot%' ORDER BY rowid DESC LIMIT 1;"
 ```
 
@@ -105,13 +105,15 @@ grep version ~/.hermes/plugins/kanban-context/plugin.yaml
 | Issue | Notas |
 |-------|-------|
 | Worker toolset no Hermes core | Fix definitivo: PR em `_HERMES_CORE_TOOLS` |
-| Board hardcoded default | Parametrizável via `CROSSBOT_KANBAN_BOARD` |
+| `unable to open database file` | Rode `./scripts/setup-crossbot-board.sh` |
+| `unsupported operand type(s) for \|` (Python 3.8) | v2.3.2+ usa `hermes kanban create` via CLI; atualize com `./scripts/install.sh cross-bot` |
 
 ## Deploy após pull
 
 ```bash
 cd hermes-community-plugins && git pull
 ./scripts/install.sh cross-bot
+./scripts/setup-crossbot-board.sh
 hermes gateway restart
 ```
 

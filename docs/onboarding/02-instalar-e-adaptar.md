@@ -129,12 +129,24 @@ Obrigatório: cada bot precisa saber **quem ele é** e **quem são os outros** �
 → Copie e preencha: [AGENT-SYSTEM-PROMPT.md](./AGENT-SYSTEM-PROMPT.md)  
 → Template do mapa: [../reference/mapa-colegas.template.md](../reference/mapa-colegas.template.md)
 
-### A7. Visibilidade + restart
+### A7. Visibilidade + Kanban board + restart
 
-`~/.hermes/plugins/kanban-context/visibility-config.json` — `chat_id` do workspace.
+`visibility-config.json` — `chat_id` do workspace.
+
+**Board Kanban (obrigatório para workers):** o cross-bot cria uma task no Kanban para acordar o agente destino. Sem o board, o outbox é gravado mas **ninguém processa**.
 
 ```bash
-hermes gateway restart   # ou reinicie cada gateway dos profiles inventariados
+chmod +x scripts/setup-crossbot-board.sh
+./scripts/setup-crossbot-board.sh
+```
+
+```bash
+# ~/.hermes/.env
+CROSSBOT_KANBAN_BOARD=cross-bot
+```
+
+```bash
+hermes gateway restart
 ```
 
 ### A8. Validar
