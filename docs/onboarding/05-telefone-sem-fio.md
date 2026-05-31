@@ -4,24 +4,45 @@
 
 ## Comando rápido
 
+**Antes de rodar:** configure o roster com profiles **reais** (pastas em `~/.hermes/profiles/`):
+
+```bash
+chmod +x scripts/configure-crossbot.sh scripts/telefone-sem-fio.sh
+./scripts/configure-crossbot.sh
+```
+
 Na raiz do repositório (ou após `git pull`):
 
 ```bash
-chmod +x scripts/telefone-sem-fio.sh
 PHRASE="O rato roeu" ./scripts/telefone-sem-fio.sh
 ```
 
-Com orchestrator diferente do default:
+Com orchestrator explícito (só se quiser sobrescrever o bot que está iniciando):
 
 ```bash
-ORCHESTRATOR=ops PHRASE="GATO BONITO" ./scripts/telefone-sem-fio.sh
+ORCHESTRATOR=outro-profile PHRASE="GATO BONITO" ./scripts/telefone-sem-fio.sh
 ```
 
-O script lê o **roster** de `~/.hermes/plugins/kanban-context/topic-map.json` (todos os profiles exceto `orchestrator`), sorteia o primeiro jogador e dispara o `crossbot_send`.
+**Detecção automática do orchestrator** (quando `ORCHESTRATOR` não é passado):
 
-**Pré-requisito:** `./scripts/setup-crossbot-board.sh` (board Kanban para acordar workers)
+1. `CROSSBOT_BOT_NAME` — bot/profile que executa o script
+2. `HERMES_HOME` — profile isolado (`~/.hermes/profiles/<nome>/`)
+3. `~/.hermes/active_profile` — profile sticky do Hermes
+4. campo `orchestrator` no `topic-map.json` (gravado pelo `configure-crossbot.sh`)
 
-**Erro comum:** `unable to open database file` → board não existe. Rode o setup e repita.
+Ou seja: se **matias** pedir e rodar o script no contexto dela, o orchestrator será **matias** — sem precisar passar variável.
+
+O script lê o **roster** de `topic-map.json` (todos os profiles exceto o orchestrator detectado), sorteia o primeiro jogador e dispara o `crossbot_send`.
+
+> **Não use placeholders** (`ops`, `agent-alpha`…) no `topic-map.json`. O assignee da task Kanban é o **nome da pasta do profile** — se não existir, o worker nunca sobe.
+
+**Pré-requisitos:**
+- `./scripts/configure-crossbot.sh` — roster alinhado ao ambiente
+- `./scripts/setup-crossbot-board.sh` — board Kanban para acordar workers
+
+**Erros comuns:**
+- `topic-map lists profiles that do not exist` → rode `configure-crossbot.sh`
+- `unable to open database file` → board não existe; rode `setup-crossbot-board.sh`
 
 **Frase para pedir ao bot orchestrator no chat:**
 

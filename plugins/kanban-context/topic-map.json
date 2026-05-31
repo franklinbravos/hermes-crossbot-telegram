@@ -1,16 +1,6 @@
 {
-  "comment": "Substitua pelos valores do seu ambiente. Ver docs/reference/topic-map.example.json",
-  "chat_id": "-100XXXXXXXXXX",
-  "topics": {
-    "orchestrator": 0,
-    "ops": 0,
-    "agent-alpha": 0,
-    "agent-beta": 0
-  },
-  "handles": {
-    "orchestrator": "seu_bot_orchestrator",
-    "ops": "seu_bot_ops",
-    "agent-alpha": "seu_bot_alpha",
-    "agent-beta": "seu_bot_beta"
-  }
+  "comment": "VAZIO — rode ./scripts/configure-crossbot.sh para gerar a partir dos profiles em ~/.hermes/profiles/",
+  "chat_id": "",
+  "topics": {},
+  "handles": {}
 }

@@ -45,7 +45,10 @@ main() {
       install_one multi-agent-context
       install_one kanban-context
       echo ""
-      echo "Cross-bot stack installed. Next: docs/onboarding/02-instalar-e-adaptar.md"
+      echo "Cross-bot stack installed."
+      echo "  1. ./scripts/configure-crossbot.sh   — roster com profiles reais"
+      echo "  2. ./scripts/setup-crossbot-board.sh"
+      echo "  3. docs/onboarding/02-instalar-e-adaptar.md"
       ;;
     all)
       for dir in "${REPO_ROOT}"/plugins/*/; do

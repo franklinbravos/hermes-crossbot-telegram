@@ -99,7 +99,30 @@ Se **já** tiver workspace: documente `chat_id` e cada `thread_id` na tabela do 
 
 ### A5. Montar `topic-map.json` a partir do inventário
 
-Edite `~/.hermes/plugins/kanban-context/topic-map.json`:
+**Recomendado — wizard interativo** (usa só profiles que existem em disco):
+
+```bash
+chmod +x scripts/configure-crossbot.sh
+./scripts/configure-crossbot.sh
+```
+
+O script pergunta:
+- qual profile é o **orchestrator**
+- quais profiles entram no **telefone sem fio**
+- `chat_id` e `thread_id` do workspace
+- opcionalmente grava `CROSSBOT_BOT_NAME` no `.env` de cada profile
+
+Modo não-interativo (CI / repeat):
+
+```bash
+./scripts/configure-crossbot.sh \
+  --orchestrator matias \
+  --players sofia,iago \
+  --chat-id -100XXXXXXXXXX \
+  --yes
+```
+
+**Manual** — edite `~/.hermes/plugins/kanban-context/topic-map.json`:
 
 ```json
 {
@@ -156,8 +179,8 @@ hermes gateway restart
 CROSSBOT_BOT_NAME=<profile-a> python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py \
   send <profile-b> "Smoke test" "Confirme recebimento"
 
-# Benchmark completo
-PHRASE="O rato roeu" ORCHESTRATOR=<profile-orquestrador> ./scripts/telefone-sem-fio.sh
+# Benchmark completo (orchestrator = bot que roda o script, detectado automaticamente)
+PHRASE="O rato roeu" ./scripts/telefone-sem-fio.sh
 ```
 
 `/kanban-status` em qualquer agente · checklist em [HANDOFF-DEPLOY.md](./HANDOFF-DEPLOY.md)
@@ -179,6 +202,7 @@ Use só se **não** existir nenhum profile Hermes.
 | Sintoma | Ação |
 |---------|------|
 | Cross-bot não chega | `CROSSBOT_BOT_NAME` ≠ nome da pasta do profile destino |
+| Task `ready` para `ops` mas não existe bot ops | `topic-map.json` ainda com placeholders — rode `./scripts/configure-crossbot.sh` |
 | Bot “não conhece” colega | Atualizar SOUL + `topic-map.json` |
 | Mensagem no tópico errado | Conferir `topics` no topic-map |
 | Outbox pending | Worker não usou `crossbot_cli respond` |

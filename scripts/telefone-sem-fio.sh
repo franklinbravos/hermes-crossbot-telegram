@@ -6,10 +6,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib/resolve-python.sh
 source "${REPO_ROOT}/scripts/lib/resolve-python.sh"
+# shellcheck source=lib/crossbot-env.sh
+source "${REPO_ROOT}/scripts/lib/crossbot-env.sh"
 PYTHON="$(resolve_hermes_python)"
 CLI="${CROSSBOT_CLI:-${HOME}/.hermes/plugins/kanban-context/crossbot_cli.py}"
 TOPIC_MAP="${TOPIC_MAP:-${HOME}/.hermes/plugins/kanban-context/topic-map.json}"
-ORCHESTRATOR="${CROSSBOT_BOT_NAME:-${ORCHESTRATOR:-orchestrator}}"
 PHRASE="${PHRASE:-O rato roeu}"
 
 if [[ ! -f "$CLI" ]]; then
@@ -27,6 +28,8 @@ if [[ ! -f "$TOPIC_MAP" ]]; then
   exit 1
 fi
 
+ORCHESTRATOR="$(resolve_orchestrator "$TOPIC_MAP" "$PYTHON")"
+
 readarray -t PLAYERS < <("$PYTHON" - "$TOPIC_MAP" "$ORCHESTRATOR" <<'PY'
 import json, sys
 path, orch = sys.argv[1], sys.argv[2]
@@ -40,8 +43,11 @@ PY
 
 if [[ ${#PLAYERS[@]} -eq 0 ]]; then
   echo "Error: no players in topic-map (excluding orchestrator=${ORCHESTRATOR})" >&2
+  echo "Run: ./scripts/configure-crossbot.sh" >&2
   exit 1
 fi
+
+validate_crossbot_roster "$TOPIC_MAP" "$ORCHESTRATOR" "$PYTHON"
 
 ROSTER="$(IFS=,; echo "${PLAYERS[*]}")"
 FIRST="${PLAYERS[$((RANDOM % ${#PLAYERS[@]}))]}"
