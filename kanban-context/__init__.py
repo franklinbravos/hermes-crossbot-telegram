@@ -49,6 +49,7 @@ import json
 import logging
 import os
 import sqlite3
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -300,71 +301,65 @@ def crossbot_send(
     # Auto-create kanban task if not provided
     if not kanban_task_id:
         try:
-            # Find/create a kanban board database for the task
-            _kdb = None
-            _board_name = "cross-bot"
-            boards_dir = _boards_dir()
-            _init_schema = (
-                "CREATE TABLE IF NOT EXISTS tasks ("
-                "id TEXT PRIMARY KEY, title TEXT, body TEXT, assignee TEXT, "
-                "status TEXT, priority INTEGER, created_by TEXT, created_at REAL"
-                ")"
+            # Use Hermes kanban API to create the task — this guarantees
+            # the dispatcher will pick it up (SQL-only inserts can miss
+            # internal status values that the dispatcher watches for).
+            _kc_paths_to_try = [
+                str(Path(__file__).parent.parent.parent / "hermes-agent"),
+                str(Path.home() / ".hermes" / "hermes-agent"),
+            ]
+            for _kp in _kc_paths_to_try:
+                if _kp not in sys.path:
+                    sys.path.insert(0, _kp)
+
+            from hermes_cli.kanban_db import (
+                create_task as _hermes_create_task,
+                board_exists as _board_exists,
+                list_boards as _list_boards,
+                create_board as _create_board,
+                kanban_db_path as _kanban_db_path,
             )
-            if boards_dir.is_dir():
-                for _bd in sorted(os.listdir(str(boards_dir))):
-                    _candidate = boards_dir / _bd / "kanban.db"
-                    if _candidate.is_file():
-                        _kdb = _candidate
-                        _board_name = _bd
-                        break
-            if _kdb is None:
-                # Create cross-bot board if no existing board
-                _kdb = boards_dir / "cross-bot" / "kanban.db"
-                os.makedirs(str(_kdb.parent), exist_ok=True)
-                _kconn_init = _sqlite3.connect(str(_kdb), timeout=5)
+
+            # Determine which board to use — linkedin-content has an active
+            # dispatcher that works. Default board may not trigger dispatch.
+            _kc_board = "linkedin-content"
+
+            if not _board_exists(_kc_board):
                 try:
-                    _kconn_init.execute(_init_schema)
-                    _kconn_init.commit()
-                finally:
-                    _kconn_init.close()
+                    _create_board(_kc_board, display_name="Cross-Bot Messages")
+                except Exception:
+                    pass  # May already exist
 
-            _task_id = f"t_{_uuid.uuid4().hex[:12]}"
-            _kconn = _sqlite3.connect(str(_kdb), timeout=5)
+            # Open board DB and create task via Hermes API
+            _kc_db_path = _kanban_db_path(_kc_board)
+            _kc_conn = _sqlite3.connect(str(_kc_db_path), timeout=5)
             try:
-                # Check if tasks table exists (board may lack schema)
-                _has_tasks = _kconn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'"
-                ).fetchone()
-                if not _has_tasks:
-                    _kconn.execute(_init_schema)
-
-                _kconn.execute(
-                    "INSERT INTO tasks (id, title, body, assignee, status, priority, created_by, created_at) "
-                    "VALUES (?, ?, ?, ?, 'pending', 1, ?, ?)",
-                    (_task_id, f"[Cross-Bot] {subject[:150]}", body, to_bot, from_bot, now),
+                _task_id = _hermes_create_task(
+                    _kc_conn,
+                    title=f"[Cross-Bot] {subject[:150]}",
+                    body=body,
+                    assignee=to_bot,
+                    created_by=from_bot,
+                    initial_status="running",  # Required for dispatcher to pick up
                 )
-                _kconn.execute(
-                    "INSERT INTO task_events (task_id, kind, payload, created_at) "
-                    "VALUES (?, 'created', ?, ?)",
-                    (_task_id, _json.dumps({"by": from_bot, "title": subject[:150]}), now),
-                )
-                _kconn.commit()
+                # create_task already commits internally (write_txn)
                 kanban_task_id = _task_id
                 logger.info(
-                    "crossbot: auto-created kanban task %s for '%s' in board '%s' (trigger dispatcher)",
-                    _task_id, to_bot, _board_name,
+                    "crossbot: created kanban task %s for '%s' in board '%s' "
+                    "(via Hermes API — dispatcher will pick up)",
+                    _task_id, to_bot, _kc_board,
                 )
             finally:
-                _kconn.close()
+                _kc_conn.close()
         except Exception as exc:
-            logger.warning("crossbot: failed to auto-create kanban task: %s", exc)
+            logger.warning("crossbot: failed to auto-create kanban task via Hermes API: %s", exc)
 
     try:
         with conn:
             cur = conn.execute(
-                "INSERT INTO outbox (ts, from_bot, to_bot, subject, body, kanban_task_id, status) "
-                "VALUES (?, ?, ?, ?, ?, ?, 'pending')",
-                (now, from_bot, to_bot, subject[:200], body, kanban_task_id),
+                "INSERT INTO outbox (id, ts, from_bot, to_bot, subject, body, kanban_task_id, status) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')",
+                (None, now, from_bot, to_bot, subject[:200], body, kanban_task_id),
             )
             row_id = cur.lastrowid
         logger.info(
