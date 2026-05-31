@@ -2,7 +2,7 @@
 
 Plugin de injeção de contexto Kanban + barramento de mensagens cross-bot para Hermes Agent.
 
-**Versão:** v2.1.0 | **Fonte:** franklinbravos/hermes-community-plugins
+**Versão:** v2.1.5 | **Fonte:** franklinbravos/hermes-community-plugins
 **Compatibilidade:** Hermes v0.13+ | Python 3.11+ | Stdlib only (zero dependências)
 
 ---
@@ -49,6 +49,10 @@ hermes gateway restart
 | `KANBAN_CONTEXT_OUTBOX_RETENTION` | `14` | Dias para manter mensagens concluídas |
 | `KANBAN_CONTEXT_LOG_RETENTION` | `7` | Dias para manter arquivos de log |
 | `CROSSBOT_VISIBILITY_CHAT` | *(empty)* | Chat ID do Telegram para espelhar mensagens cross-bot (visibilidade humana) |
+| `CROSSBOT_VISIBILITY_TOKEN` | *(empty)* | Token do bot **dedicado** que posta 📤/📥 (recomendado — evita erro reply entre bots) |
+| `CROSSBOT_VISIBILITY_THREAD_ID` | *(empty)* | ID do tópico (grupos fórum Telegram) |
+| `CROSSBOT_KANBAN_BOARD` | `linkedin-content` | Board usado para dispatch de workers cross-bot |
+| `CROSSBOT_AUDIT_LOG` | `~/.hermes/logs/kanban-context/crossbot-audit.jsonl` | Log JSONL para debug remoto |
 | `CROSSBOT_BOT_NAME` | *(nome do profile)* | Nome do bot para endereçamento no barramento |
 | `MULTI_AGENT_TG_DB_PATH` | `$HERMES_HOME/data/multi_agent_tg_shared.db` | Caminho do banco SQLite compartilhado |
 
@@ -119,6 +123,8 @@ Cada `crossbot_send()` e `crossbot_respond()` posta automaticamente no grupo:
 
 Sem resumos, sem omissões — o que os bots trocam, você vê.
 
+**Debug:** ver [docs/CROSSBOT-DEBUG.md](./docs/CROSSBOT-DEBUG.md) — log em `~/.hermes/logs/kanban-context/crossbot-audit.jsonl`
+
 ---
 
 ## 🔗 Repositórios
@@ -134,17 +140,16 @@ Sem resumos, sem omissões — o que os bots trocam, você vê.
 
 ## 📋 API Pública
 
+**Tools Hermes (recomendado para agentes, v2.1.4+):** `crossbot_send`, `crossbot_respond`
+
+**API Python:**
+
 ```python
 from plugins.kanban_context import (
-    # Barramento cross-bot
     crossbot_send,        # (to_bot, subject, body) -> outbox_id
     crossbot_respond,     # (outbox_id, response_text) -> bool
     crossbot_get_history, # (for_bot, limit) -> list[dict]
-    
-    # Manutenção
     run_maintenance,      # (force=False) -> None
-    
-    # Dashboard
     kanban_status,        # () -> str (relatório formatado)
 )
 ```

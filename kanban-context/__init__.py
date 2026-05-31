@@ -513,6 +513,40 @@ def _get_visibility_thread() -> Optional[str]:
     return None
 
 
+def _crossbot_audit_log(event: str, **fields: Any) -> None:
+    """Structured JSONL log for remote debugging. See docs/CROSSBOT-DEBUG.md."""
+    try:
+        log_path = os.environ.get(
+            "CROSSBOT_AUDIT_LOG",
+            str(_real_hermes_home() / "logs" / "kanban-context" / "crossbot-audit.jsonl"),
+        ).strip()
+        log_dir = os.path.dirname(log_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        entry: Dict[str, Any] = {"ts": time.time(), "event": event, "bot": _my_bot_name()}
+        for key, val in fields.items():
+            if key == "token" and val:
+                entry["token_prefix"] = str(val)[:12] + "..."
+            else:
+                entry[key] = val
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        logger.debug("crossbot-audit: write failed: %s", exc)
+
+
+def _get_visibility_token() -> Optional[str]:
+    """Token for visibility posts — always the dedicated visibility bot, not the worker profile."""
+    cfg = _read_visibility_config()
+    token = cfg.get("telegram_bot_token", "").strip()
+    if token:
+        return token
+    token = os.environ.get("CROSSBOT_VISIBILITY_TOKEN", "").strip()
+    if token:
+        return token
+    return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() or None
+
+
 def _get_telegram_token() -> Optional[str]:
     """Return the Telegram Bot API token for posting visibility messages.
 
@@ -552,31 +586,27 @@ def _get_telegram_token() -> Optional[str]:
     return None
 
 
-def _post_visibility_message(text: str, direction: str = "sent", thread_id: Optional[str] = None, reply_to: Optional[int] = None) -> bool:
+def _post_visibility_message(text: str, direction: str = "sent", thread_id: Optional[str] = None, reply_to: Optional[int] = None, outbox_id: Optional[int] = None) -> Optional[int]:
     """Post a cross-bot message to the Telegram group for human visibility.
 
-    Args:
-        text: The formatted message to post
-        direction: "sent" or "responded"
-        thread_id: Optional Telegram topic/message_thread_id.
-                   If None, reads from config/env.
-        reply_to: Optional Telegram message_id to reply to.
-
-    Returns the posted message_id (int) on success, or None on failure.
+    Uses _get_visibility_token() (not worker profile token). Retries without
+    reply_to when Telegram returns 400 (bots cannot reply to other bots' msgs).
     """
+    import urllib.error
+    import urllib.request
+
     chat_id = _get_visibility_chat()
-    token = _get_telegram_token()
+    token = _get_visibility_token()
     if not chat_id or not token:
+        _crossbot_audit_log("visibility_skip", outbox_id=outbox_id, direction=direction, reason="no chat/token")
         return None
 
-    # Resolve thread_id
     msg_thread = thread_id or _get_visibility_thread()
     try:
         msg_thread_int = int(msg_thread) if msg_thread else None
     except (ValueError, TypeError):
         msg_thread_int = None
 
-    # Resolve reply_to
     try:
         reply_to_int = int(reply_to) if reply_to else None
     except (ValueError, TypeError):
@@ -585,36 +615,65 @@ def _post_visibility_message(text: str, direction: str = "sent", thread_id: Opti
     prefix = "📤" if direction == "sent" else "📥"
     full_text = f"{prefix} **Cross-Bot**\n\n{text}"
 
-    try:
-        import urllib.request
-        import json as _json
-        payload = {
+    attempts: List[Optional[int]] = []
+    if reply_to_int is not None:
+        attempts.append(reply_to_int)
+    attempts.append(None)
+
+    for reply_to_try in attempts:
+        payload: Dict[str, Any] = {
             "chat_id": chat_id,
             "text": full_text,
             "parse_mode": "Markdown",
         }
         if msg_thread_int is not None:
             payload["message_thread_id"] = msg_thread_int
-        if reply_to_int is not None:
-            payload["reply_to_message_id"] = reply_to_int
+        if reply_to_try is not None:
+            payload["reply_to_message_id"] = reply_to_try
 
-        data = _json.dumps(payload).encode("utf-8")
         url = f"https://api.telegram.org/bot{token}/sendMessage"
+        data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data, method="POST")
         req.add_header("Content-Type", "application/json")
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            resp_body = resp.read().decode("utf-8")
-            result = _json.loads(resp_body)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
             if result.get("ok"):
                 msg_id = result.get("result", {}).get("message_id")
-                logger.debug("crossbot-visibility: posted to chat %s (thread=%s, reply_to=%s, %s)",
-                             chat_id, msg_thread_int, reply_to_int, direction)
+                _crossbot_audit_log(
+                    "visibility_post", outbox_id=outbox_id, direction=direction, token=token,
+                    chat_id=chat_id, thread_id=msg_thread_int, reply_to=reply_to_try,
+                    ok=True, telegram_msg_id=msg_id,
+                    attempt="with_reply" if reply_to_try else "no_reply",
+                )
+                logger.info(
+                    "crossbot-visibility: posted outbox=%s dir=%s msg_id=%s reply_to=%s",
+                    outbox_id, direction, msg_id, reply_to_try,
+                )
                 return msg_id
-            logger.warning("crossbot-visibility: API error: %s", result.get("description", "unknown"))
+            err = str(result.get("description", "unknown"))
+        except urllib.error.HTTPError as exc:
+            try:
+                err = json.loads(exc.read().decode("utf-8")).get("description", str(exc))
+            except Exception:
+                err = str(exc)
+        except Exception as exc:
+            err = str(exc)
+
+        _crossbot_audit_log(
+            "visibility_post", outbox_id=outbox_id, direction=direction, token=token,
+            chat_id=chat_id, thread_id=msg_thread_int, reply_to=reply_to_try,
+            ok=False, error=err, attempt="with_reply" if reply_to_try else "no_reply",
+        )
+        if reply_to_try is None:
+            logger.warning("crossbot-visibility: failed outbox=%s err=%s", outbox_id, err)
             return None
-    except Exception as exc:
-        logger.warning("crossbot-visibility: failed to post: %s", exc)
+        if "reply" in err.lower() or "not found" in err.lower():
+            logger.info("crossbot-visibility: reply_to=%s rejected (%s), retry without reply", reply_to_try, err)
+            continue
+        logger.warning("crossbot-visibility: failed outbox=%s err=%s", outbox_id, err)
         return None
+    return None
 
 
 def crossbot_send(
@@ -756,7 +815,11 @@ def crossbot_send(
         f"{body}\n\n"
         f"└─ *ID:* #{row_id}"
     )
-    tg_msg_id = _post_visibility_message(vis_text, "sent", thread_id=str(topic_id) if topic_id else None)
+    tg_msg_id = _post_visibility_message(
+        vis_text, "sent",
+        thread_id=str(topic_id) if topic_id else None,
+        outbox_id=row_id,
+    )
 
     # Save telegram_msg_id to outbox for reply threading
     if tg_msg_id:
@@ -815,6 +878,7 @@ def crossbot_respond(outbox_id: int, response_text: str) -> bool:
                 vis_text, "responded",
                 thread_id=str(topic_id) if topic_id else None,
                 reply_to=reply_to,
+                outbox_id=outbox_id,
             )
 
         return True
@@ -992,9 +1056,19 @@ def _read_pending_messages() -> str:
         if len(msg["body"]) > 200:
             body += "..."
         task_ref = f" (kanban: {msg['kanban_task_id']})" if msg["kanban_task_id"] else ""
-        lines.append(f"- [{when}] From **{msg['from_bot']}** — {subj}{task_ref}")
+        lines.append(f"- ID #{msg['id']} [{when}] From **{msg['from_bot']}** — {subj}{task_ref}")
         lines.append(f"  > {body}")
-    lines.extend(["", "To respond, process the linked Kanban task and call crossbot_respond().", ""])
+    lines.extend([
+        "",
+        "⚠️ MANDATORY — call crossbot_respond BEFORE kanban_complete:",
+    ])
+    for msg in pending:
+        lines.append(f"  crossbot_respond(outbox_id={msg['id']}, response_text=\"<reply>\")")
+    lines.extend([
+        "",
+        "Do NOT finish with only kanban_comment or kanban_complete.",
+        "",
+    ])
     lines.append("[End Pending Messages]")
     return "\n".join(lines)
 

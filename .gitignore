@@ -4,3 +4,7 @@ __pycache__/
 .env
 *.db
 *.sqlite3
+.agents/
+.memory/
+opencode.json
+.ignore
