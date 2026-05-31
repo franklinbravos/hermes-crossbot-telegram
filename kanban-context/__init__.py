@@ -45,6 +45,7 @@ Configuration via environment variables
 from __future__ import annotations
 
 import functools
+import html
 import json
 import logging
 import os
@@ -549,6 +550,29 @@ def _crossbot_audit_log(event: str, **fields: Any) -> None:
         logger.debug("crossbot-audit: write failed: %s", exc)
 
 
+def _escape_telegram_html(text: str) -> str:
+    return html.escape(text, quote=False)
+
+
+def _get_profile_telegram_token(bot_name: str) -> Optional[str]:
+    """Load TELEGRAM_BOT_TOKEN from a Hermes profile .env (by profile name)."""
+    if not bot_name or bot_name == "bot":
+        return None
+    profile_env = _real_hermes_home() / "profiles" / bot_name / ".env"
+    if not profile_env.is_file():
+        return None
+    try:
+        with open(profile_env, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("TELEGRAM_BOT_TOKEN="):
+                    val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    return val if val else None
+    except Exception:
+        pass
+    return None
+
+
 def _get_visibility_token() -> Optional[str]:
     """Token for visibility posts — always the dedicated visibility bot, not the worker profile."""
     cfg = _read_visibility_config()
@@ -562,57 +586,63 @@ def _get_visibility_token() -> Optional[str]:
 
 
 def _get_telegram_token() -> Optional[str]:
-    """Return the Telegram Bot API token for posting visibility messages.
-
-    Resolution order:
-    When CROSSBOT_BOT_NAME is set (kanban worker), ALWAYS loads from the
-    profile .env first — the inherited env var belongs to the parent process
-    and may have a different bot's token.
-    """
+    """Return the Telegram Bot API token for the current process/profile."""
     bot_name = _my_bot_name()
-
-    # If we know which bot we are, ALWAYS load from profile .env first
-    # (the inherited TELEGRAM_BOT_TOKEN may be from the parent process)
-    if bot_name and bot_name != "bot":
-        profile_env = _real_hermes_home() / "profiles" / bot_name / ".env"
-        if profile_env.is_file():
-            try:
-                with open(profile_env, "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line.startswith("TELEGRAM_BOT_TOKEN="):
-                            val = line.split("=", 1)[1].strip().strip('"').strip("'")
-                            if val:
-                                return val
-            except Exception:
-                pass
-
-    # Fallback: env var (for scripts outside profiles)
+    token = _get_profile_telegram_token(bot_name)
+    if token:
+        return token
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if token:
         return token
-
-    # Last resort: config file
     cfg = _read_visibility_config()
-    token = cfg.get("telegram_bot_token", "").strip()
-    if token:
-        return token
-    return None
+    return cfg.get("telegram_bot_token", "").strip() or None
 
 
-def _post_visibility_message(text: str, direction: str = "sent", thread_id: Optional[str] = None, reply_to: Optional[int] = None, outbox_id: Optional[int] = None) -> Optional[int]:
+def _resolve_visibility_token(post_as_bot: Optional[str] = None) -> Optional[str]:
+    """Pick token so Telegram shows the correct bot as sender.
+
+    When post_as_bot is set (e.g. 'bravo' for responses), use that profile's
+    token so the message appears from Bravo — not from the visibility bot.
+    Falls back to CROSSBOT_VISIBILITY_TOKEN when profile token is missing.
+    """
+    if post_as_bot:
+        profile_token = _get_profile_telegram_token(post_as_bot)
+        if profile_token:
+            return profile_token
+        logger.warning(
+            "crossbot-visibility: no token for profile '%s', falling back to visibility token",
+            post_as_bot,
+        )
+    return _get_visibility_token()
+
+
+def _post_visibility_message(
+    text: str,
+    direction: str = "sent",
+    thread_id: Optional[str] = None,
+    reply_to: Optional[int] = None,
+    outbox_id: Optional[int] = None,
+    post_as_bot: Optional[str] = None,
+) -> Optional[int]:
     """Post a cross-bot message to the Telegram group for human visibility.
 
-    Uses _get_visibility_token() (not worker profile token). Retries without
-    reply_to when Telegram returns 400 (bots cannot reply to other bots' msgs).
+    post_as_bot: profile name whose TELEGRAM_BOT_TOKEN to use (shows as that bot
+    in Telegram). For responses, pass the responder (e.g. bravo). For sends,
+    pass the sender (e.g. matias). Falls back to visibility token if missing.
+
+    reply_to is skipped when post_as_bot is set — different bot cannot reply
+    to another bot's message; avoids Matias appearing as self-reply.
     """
     import urllib.error
     import urllib.request
 
     chat_id = _get_visibility_chat()
-    token = _get_visibility_token()
+    token = _resolve_visibility_token(post_as_bot)
     if not chat_id or not token:
-        _crossbot_audit_log("visibility_skip", outbox_id=outbox_id, direction=direction, reason="no chat/token")
+        _crossbot_audit_log(
+            "visibility_skip", outbox_id=outbox_id, direction=direction,
+            reason="no chat/token", post_as_bot=post_as_bot,
+        )
         return None
 
     msg_thread = thread_id or _get_visibility_thread()
@@ -626,8 +656,17 @@ def _post_visibility_message(text: str, direction: str = "sent", thread_id: Opti
     except (ValueError, TypeError):
         reply_to_int = None
 
+    # Cross-bot tokens cannot reply_to each other's messages — skip when posting
+    # as a different bot than the visibility mirror bot.
+    if post_as_bot:
+        reply_to_int = None
+
     prefix = "📤" if direction == "sent" else "📥"
-    full_text = f"{prefix} **Cross-Bot**\n\n{text}"
+    handle = _get_bot_handle(post_as_bot) if post_as_bot else "Cross-Bot"
+    full_text = (
+        f"{prefix} <b>@{_escape_telegram_html(handle)}</b>\n\n"
+        f"{_escape_telegram_html(text)}"
+    )
 
     attempts: List[Optional[int]] = []
     if reply_to_int is not None:
@@ -638,7 +677,7 @@ def _post_visibility_message(text: str, direction: str = "sent", thread_id: Opti
         payload: Dict[str, Any] = {
             "chat_id": chat_id,
             "text": full_text,
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML",
         }
         if msg_thread_int is not None:
             payload["message_thread_id"] = msg_thread_int
@@ -659,10 +698,11 @@ def _post_visibility_message(text: str, direction: str = "sent", thread_id: Opti
                     chat_id=chat_id, thread_id=msg_thread_int, reply_to=reply_to_try,
                     ok=True, telegram_msg_id=msg_id,
                     attempt="with_reply" if reply_to_try else "no_reply",
+                    post_as_bot=post_as_bot,
                 )
                 logger.info(
-                    "crossbot-visibility: posted outbox=%s dir=%s msg_id=%s reply_to=%s",
-                    outbox_id, direction, msg_id, reply_to_try,
+                    "crossbot-visibility: posted outbox=%s dir=%s as=%s msg_id=%s",
+                    outbox_id, direction, post_as_bot or "visibility", msg_id,
                 )
                 return msg_id
             err = str(result.get("description", "unknown"))
@@ -678,6 +718,7 @@ def _post_visibility_message(text: str, direction: str = "sent", thread_id: Opti
             "visibility_post", outbox_id=outbox_id, direction=direction, token=token,
             chat_id=chat_id, thread_id=msg_thread_int, reply_to=reply_to_try,
             ok=False, error=err, attempt="with_reply" if reply_to_try else "no_reply",
+            post_as_bot=post_as_bot,
         )
         if reply_to_try is None:
             logger.warning("crossbot-visibility: failed outbox=%s err=%s", outbox_id, err)
@@ -818,16 +859,17 @@ def crossbot_send(
     # Post visibility message to Telegram group — in the destination bot's topic
     topic_id = _get_topic_for_bot(to_bot)
     vis_text = (
-        f"**From:** {from_bot}\n"
-        f"**To:** {to_bot}\n"
-        f"**Subject:** {subject}\n\n"
+        f"From: {from_bot}\n"
+        f"To: {to_bot}\n"
+        f"Subject: {subject}\n\n"
         f"{body}\n\n"
-        f"└─ *ID:* #{row_id}"
+        f"└ outbox #{row_id}"
     )
     tg_msg_id = _post_visibility_message(
         vis_text, "sent",
         thread_id=str(topic_id) if topic_id else None,
         outbox_id=row_id,
+        post_as_bot=from_bot,
     )
 
     # Save telegram_msg_id to outbox for reply threading
@@ -881,20 +923,20 @@ def crossbot_respond(outbox_id: int, response_text: str) -> bool:
 
         # Post visibility message to Telegram group — reply to original message
         if orig:
-            topic_id = _get_topic_for_bot(orig[1])  # orig[1] is to_bot
-            reply_to = orig[3]  # orig[3] is telegram_msg_id
+            responder = orig[1]  # to_bot — who processed and responds
+            requester = orig[0]   # from_bot — who sent the message
+            topic_id = _get_topic_for_bot(responder)
             vis_text = (
-                f"**From:** {orig[1]}\n"
-                f"**To:** {orig[0]}\n"
-                f"**Subject:** {orig[2]}\n"
-                f"**Response:**\n{response_text}\n\n"
-                f"└─ *ID:* #{outbox_id}"
+                f"Re: {orig[2]}\n"
+                f"Para @{_get_bot_handle(requester)}\n\n"
+                f"{response_text}\n\n"
+                f"└ outbox #{outbox_id}"
             )
             _post_visibility_message(
                 vis_text, "responded",
                 thread_id=str(topic_id) if topic_id else None,
-                reply_to=reply_to,
                 outbox_id=outbox_id,
+                post_as_bot=responder,
             )
 
         return True
