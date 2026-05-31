@@ -1,122 +1,73 @@
-# kanban-context plugin 🗂️
+# kanban-context 🗂️
 
-Injects recent Kanban board activity + cross-bot messaging into agent context
-via the `pre_llm_call` hook.
+Kanban activity injection + **cross-bot messaging** com visibilidade Telegram.
 
-**v2.1.0** — Now with proactive validation, auto-cleaning logs, and `/kanban-status` dashboard.
+**Versão:** 2.2.4 | **Python:** 3.11+ | **Hermes:** v0.13+
 
----
+## O que faz
 
-## Features
+| Feature | Descrição |
+|---------|-----------|
+| Kanban context | Injeta `[Recent Kanban Activity]` antes de cada LLM call |
+| Cross-bot outbox | Bots se comunicam via SQLite compartilhado |
+| Telegram visibility | 📤/📥 espelhados no grupo fórum (token por bot) |
+| Kanban dispatch | Tasks `[Cross-Bot #N]` acordam workers |
+| `/kanban-status` | Dashboard de saúde do plugin |
 
-### 1. Kanban Activity Injection
-Gives every agent awareness of what work items are flowing through the board —
-task creation, moves, completions, blocks, worker heartbeats.
+## Dependência
 
-### 2. Cross-Bot Messaging (v2.0)
-Because Telegram bots cannot see messages from other bots (hard API limitation),
-this plugin implements a **cross-bot message bus** using a shared SQLite
-`outbox` table.
+**multi-agent-context** é obrigatório para cross-bot (DB compartilhado).
 
-**How it works:**
-1. **Bot A** (sender) writes a message to the shared `outbox` table and creates a Kanban task assigned to **Bot B**
-2. The **Kanban dispatcher** picks up the task and spawns a worker for Bot B
-3. **Bot B** reads the task body (= the message), processes it, and can respond
-4. **Bot B** marks the outbox as `done` and completes the Kanban task with a summary
+## Instalação rápida
 
-**API for plugins/scripts:**
-```python
-from plugins.kanban_context import crossbot_send, crossbot_respond, crossbot_get_history
-
-# Send a message to another bot profile
-outbox_id = crossbot_send(
-    to_bot="profile_name",
-    subject="Check plugin version",
-    body="Please verify the plugin.yaml version matches __init__.py",
-    kanban_task_id="t_abc123"
-)
-
-# Respond to a message
-crossbot_respond(outbox_id, "All versions match. Done!")
-```
-
-### 3. Proactive Install-time Validation (v2.1)
-On plugin load, automatically checks:
-- Python version (>= 3.11)
-- Hermes Agent compatibility (v0.13+)
-- `multi-agent-context` plugin presence (required dependency)
-- Shared database accessibility and writability
-- Kanban database / boards directory
-- Bot name resolution for cross-bot messaging
-- Environment variable sanity (numeric bounds)
-
-Warnings and errors are logged at startup — no need to wait for runtime failures.
-
-### 4. Auto-Cleaning Logs (v2.1)
-Self-maintenance runs opportunistically on every `pre_llm_call` hook:
-- **Outbox pruning**: deletes completed messages older than retention (default: 14 days)
-- **Stale message cleanup**: marks pending messages older than 7 days as abandoned
-- **Log rotation**: removes plugin log files older than retention (default: 7 days)
-
-All intervals are configurable via environment variables.
-
-### 5. Dashboard / `/kanban-status` (v2.1)
-Send `/kanban-status` to any agent running the plugin to receive a full status
-report including:
-- Plugin version and configuration
-- Connected bots and boards
-- Outbox statistics
-- Health check with validation results
-
-Programmatic access: `kanban_status()` returns the same report as a string.
-
-## Requirements
-- Hermes Agent v0.13+ with plugin system
-- Python 3.11+
-- No extra dependencies (stdlib only)
-- `multi-agent-context` plugin (recommended, for shared DB)
-
-## Install
 ```bash
 cp -r kanban-context ~/.hermes/plugins/kanban-context
 ```
 
-Add to your profile's `config.yaml`:
 ```yaml
+# config.yaml
 plugins:
   enabled:
+    - multi-agent-context
     - kanban-context
 ```
 
-Restart the gateway.
+→ Setup completo: [../docs/onboarding/02-setup-novo-projeto.md](../docs/onboarding/02-setup-novo-projeto.md)
 
-## Configuration (Environment Variables)
+## Cross-bot — uso
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `KANBAN_CONTEXT_EVENT_LIMIT` | `10` | Max events to inject per pre-LLM context block |
-| `KANBAN_CONTEXT_LOOKBACK_H` | `12` | Lookback window in hours |
-| `CROSSBOT_BOT_NAME` | *(profile name)* | This bot's name for outbox addressing |
-| `MULTI_AGENT_TG_DB_PATH` | `$HERMES_HOME/data/multi_agent_tg_shared.db` | Shared SQLite DB path |
-| `KANBAN_CONTEXT_CLEANUP_INTERVAL` | `86400` | Maintenance interval in seconds (default: 24h) |
-| `KANBAN_CONTEXT_OUTBOX_RETENTION` | `14` | Days to keep completed outbox messages |
-| `KANBAN_CONTEXT_LOG_RETENTION` | `7` | Days to keep plugin log files |
+### Gateway (tools disponíveis)
 
-## Python API
-
-```python
-from plugins.kanban_context import (
-    # Cross-bot messaging
-    crossbot_send, crossbot_respond, crossbot_get_history,
-    # Maintenance
-    run_maintenance,
-    # Dashboard
-    kanban_status,
-)
+```
+crossbot_send(to_bot="bravo", subject="...", body="...")
+crossbot_respond(outbox_id=71, response_text="...")
 ```
 
-## Zero Hardcoding
+### Worker Kanban (terminal obrigatório)
 
-This plugin has **zero hardcoded paths or bot names**. Everything is resolved
-from Hermes Agent's standard paths (`HERMES_HOME`), environment variables,
-or profile configuration. It works in any environment without modification.
+```bash
+CROSSBOT_BOT_NAME=bravo python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py respond 71 "OK"
+```
+
+→ Guia do agente: [../docs/onboarding/04-guia-agente-hermes.md](../docs/onboarding/04-guia-agente-hermes.md)
+
+## Configuração
+
+| Arquivo | Função |
+|---------|--------|
+| `topic-map.json` | Bot → tópico Telegram + handle |
+| `visibility-config.json` | Chat ID do grupo de visibilidade |
+| `crossbot_cli.py` | CLI para workers |
+
+| Env var | Descrição |
+|---------|-----------|
+| `CROSSBOT_BOT_NAME` | Nome deste bot no barramento |
+| `MULTI_AGENT_TG_DB_PATH` | SQLite compartilhado |
+| `CROSSBOT_VISIBILITY_CHAT` | Chat ID Telegram |
+| `CROSSBOT_KANBAN_BOARD` | Board dispatch (default `linkedin-content`) |
+
+## Documentação
+
+- [Como funciona](../docs/onboarding/01-como-funciona.md)
+- [Tópicos Telegram](../docs/onboarding/03-topicos-telegram.md)
+- [Debug](../docs/reference/debug-crossbot.md)

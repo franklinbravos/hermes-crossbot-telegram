@@ -1,0 +1,20 @@
+{
+  "comment": "Modelo para novos projetos — copie para ~/.hermes/plugins/kanban-context/topic-map.json",
+  "chat_id": "-100SUBSTITUA_PELO_CHAT_ID",
+  "topics": {
+    "matias": 0,
+    "bravo": 0,
+    "catalogai": 0,
+    "crm-fast": 0,
+    "dado-seguro": 0,
+    "social-media": 0
+  },
+  "handles": {
+    "matias": "seu_bot_matias",
+    "bravo": "seu_bot_bravo",
+    "catalogai": "seu_bot_catalogai",
+    "crm-fast": "seu_bot_crm",
+    "dado-seguro": "seu_bot_dado_seguro",
+    "social-media": "seu_bot_social"
+  }
+}

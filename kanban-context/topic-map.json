@@ -1,5 +1,5 @@
 {
-  "comment": "Mapeamento de bots para tópicos e handles no grupo Workspace - Hermes",
+  "comment": "Mapeamento bot → tópico. Documentação: docs/onboarding/03-topicos-telegram.md",
   "chat_id": "-1003716565637",
   "topics": {
     "ti": 669,
