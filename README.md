@@ -2,58 +2,15 @@
 
 Battle-tested plugins for [Hermes Agent](https://github.com/NousResearch/hermes-agent) — **zero core patches required**.
 
-## Documentação
+**Versão do repositório:** 2.3.0 · **Cross-bot:** kanban-context 2.3.0
 
-**Novo projeto?** Comece aqui:
-
-| Guia | Para quem |
-|------|-----------|
-| [📖 Hub de docs](./docs/README.md) | Índice completo |
-| [Como funciona](./docs/onboarding/01-como-funciona.md) | Humanos — visão geral cross-bot |
-| [Setup passo a passo](./docs/onboarding/02-setup-novo-projeto.md) | DevOps — instalar do zero |
-| [Tópicos Telegram](./docs/onboarding/03-topicos-telegram.md) | Estrutura do grupo fórum |
-| [Guia do agente](./docs/onboarding/04-guia-agente-hermes.md) | **Bots Hermes** — como se comunicar |
-| [Telefone sem fio](./docs/onboarding/05-telefone-sem-fio.md) | Teste oficial + benchmark cross-bot |
-| [Prompt para SOUL](./docs/onboarding/AGENT-SYSTEM-PROMPT.md) | Bloco pronto para colar no perfil |
-
----
-
-## Plugins
-
-### [`kanban-context/`](./kanban-context/) 🗂️ — Cross-bot + Kanban
-
-Injeta atividade Kanban no contexto e implementa **barramento de mensagens entre bots** via SQLite outbox, com espelho 📤/📥 no Telegram.
-
-**Stack cross-bot:** `kanban-context` + `multi-agent-context` (obrigatório)
-
-**Versão atual:** 2.2.4 — cada bot posta visibilidade com seu próprio token Telegram.
-
-→ [README](./kanban-context/README.md) | [Setup](./docs/onboarding/02-setup-novo-projeto.md)
-
----
-
-### [`multi-agent-context/`](./multi-agent-context/) 🤝 — Histórico compartilhado
-
-Bots veem o que outros disseram no Telegram (SQLite WAL) ou Discord (REST API), sem `trigger: all` loops.
-
-→ [README](./multi-agent-context/README.md)
-
----
-
-### [`async-delegate/`](./async-delegate/) 🚀 — Tarefas em background
-
-Spawn subagentes em background sem bloquear o turno atual. Notificação automática ao concluir (queue ou steer).
-
-→ [README](./async-delegate/README.md)
-
----
-
-## Quick install (cross-bot)
+## Instalação (1 comando)
 
 ```bash
 git clone https://github.com/franklinbravos/hermes-community-plugins.git
-cp -r hermes-community-plugins/kanban-context ~/.hermes/plugins/kanban-context
-cp -r hermes-community-plugins/multi-agent-context ~/.hermes/plugins/multi-agent-context
+cd hermes-community-plugins
+./scripts/install.sh          # stack cross-bot (recomendado)
+# ./scripts/install.sh all    # todos os plugins
 ```
 
 Habilite em cada profile `config.yaml`:
@@ -65,29 +22,54 @@ plugins:
     - kanban-context
 ```
 
-Configure `MULTI_AGENT_TG_DB_PATH`, `topic-map.json`, `visibility-config.json` — ver [setup completo](./docs/onboarding/02-setup-novo-projeto.md).
+→ Setup completo: [docs/onboarding/02-setup-novo-projeto.md](./docs/onboarding/02-setup-novo-projeto.md)  
+→ Handoff operador: [docs/onboarding/HANDOFF-DEPLOY.md](./docs/onboarding/HANDOFF-DEPLOY.md)
 
----
+## Estrutura
 
-## Requirements
+```
+plugins/           ← pacotes instaláveis
+  kanban-context/      cross-bot + Kanban
+  multi-agent-context/ histórico compartilhado (obrigatório p/ cross-bot)
+  async-delegate/      tarefas background (opcional)
+scripts/
+  install.sh         ← instalador
+docs/
+  onboarding/        ← guias passo a passo
+  reference/         ← debug, feature map
+  archive/           ← changelog histórico
+```
 
-- Hermes Agent **v0.13+**
-- Python **3.11+**
-- Stdlib only (sem dependências extras nos plugins principais)
+## Documentação
 
-## Multi-profile deployment
+| Guia | Link |
+|------|------|
+| Hub | [docs/README.md](./docs/README.md) |
+| Como funciona | [01-como-funciona.md](./docs/onboarding/01-como-funciona.md) |
+| Guia do agente | [04-guia-agente-hermes.md](./docs/onboarding/04-guia-agente-hermes.md) |
+| Telefone sem fio | [05-telefone-sem-fio.md](./docs/onboarding/05-telefone-sem-fio.md) |
+
+## Plugins
+
+| Plugin | Descrição | README |
+|--------|-----------|--------|
+| **kanban-context** | Cross-bot + Kanban + visibilidade Telegram | [plugins/kanban-context/](./plugins/kanban-context/) |
+| **multi-agent-context** | Histórico Discord/Telegram compartilhado | [plugins/multi-agent-context/](./plugins/multi-agent-context/) |
+| **async-delegate** | Subagentes em background | [plugins/async-delegate/](./plugins/async-delegate/) |
+
+## Multi-profile
 
 ```bash
-for bot in matias bravo catalogai; do
+for bot in orchestrator ops agent-alpha; do
   mkdir -p ~/.hermes/profiles/${bot}/plugins
-  ln -sf ~/.hermes/plugins/kanban-context \
-          ~/.hermes/profiles/${bot}/plugins/kanban-context
-  ln -sf ~/.hermes/plugins/multi-agent-context \
-          ~/.hermes/profiles/${bot}/plugins/multi-agent-context
+  ln -sf ~/.hermes/plugins/kanban-context ~/.hermes/profiles/${bot}/plugins/kanban-context
+  ln -sf ~/.hermes/plugins/multi-agent-context ~/.hermes/profiles/${bot}/plugins/multi-agent-context
 done
 ```
 
-Habilite plugins no `config.yaml` de **cada** profile.
+## Requirements
+
+- Hermes Agent **v0.13+** · Python **3.11+** · stdlib only (plugins principais)
 
 ## License
 

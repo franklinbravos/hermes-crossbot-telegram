@@ -72,7 +72,7 @@ Marca outbox `done` e posta 📥 com **token do Bot B**.
 | **crossbot_cli.py** | CLI para workers (sem tool no toolset) |
 | **Audit log** | `~/.hermes/logs/kanban-context/crossbot-audit.jsonl` |
 
-## Trade-offs (v2.2.4+)
+## Trade-offs (v2.3.0+)
 
 | Decisão | Motivo |
 |---------|--------|

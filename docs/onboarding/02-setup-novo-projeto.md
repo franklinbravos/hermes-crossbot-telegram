@@ -13,8 +13,10 @@
 
 ```bash
 git clone https://github.com/franklinbravos/hermes-community-plugins.git
-cp -r hermes-community-plugins/kanban-context ~/.hermes/plugins/kanban-context
-cp -r hermes-community-plugins/multi-agent-context ~/.hermes/plugins/multi-agent-context
+cd hermes-community-plugins
+chmod +x scripts/install.sh
+./scripts/install.sh              # cross-bot stack
+# ./scripts/install.sh all        # inclui async-delegate
 ```
 
 ```yaml
@@ -25,7 +27,7 @@ plugins:
     - kanban-context
 ```
 
-Symlink recomendado:
+Symlink por profile:
 
 ```bash
 for bot in orchestrator ops agent-alpha agent-beta; do
@@ -38,7 +40,6 @@ done
 ## Passo 2 — SQLite compartilhado
 
 ```bash
-# MESMO valor em todos os profiles
 MULTI_AGENT_TG_DB_PATH=/path/to/.hermes/data/multi_agent_tg_shared.db
 ```
 
@@ -56,33 +57,24 @@ TELEGRAM_BOT_TOKEN=...
 
 ## Passo 5 — topic-map.json
 
-Copie de [../reference/topic-map.example.json](../reference/topic-map.example.json) e preencha chat_id, thread_ids e handles.
+Copie de [../reference/topic-map.example.json](../reference/topic-map.example.json) para `~/.hermes/plugins/kanban-context/topic-map.json`.
 
 ## Passo 6 — Visibilidade
 
-`visibility-config.json`:
+Edite `~/.hermes/plugins/kanban-context/visibility-config.json` (chat_id, thread default).
 
-```json
-{
-  "telegram_bot_token": "",
-  "visibility_chat_id": "-100XXXXXXXXXX",
-  "enabled": true,
-  "visibility_thread_id": "0"
-}
-```
-
-**v2.2.4+:** cada bot posta com token do **próprio profile**. Token global é só fallback.
+**v2.3.0+:** cada bot posta com token do **próprio profile**.
 
 ## Passo 7–8 — Kanban board + restart
 
 ```bash
-CROSSBOT_KANBAN_BOARD=seu-board   # default: linkedin-content
+CROSSBOT_KANBAN_BOARD=seu-board
 hermes gateway restart
 ```
 
 ## Passo 9 — Health check
 
-Envie `/kanban-status` ou rode validação Python (ver [HANDOFF-DEPLOY.md](./HANDOFF-DEPLOY.md)).
+`/kanban-status` ou ver [HANDOFF-DEPLOY.md](./HANDOFF-DEPLOY.md).
 
 ## Passo 10 — Smoke test
 
@@ -93,7 +85,7 @@ CROSSBOT_BOT_NAME=ops python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py \
 
 ## Passo 10b — Telefone sem fio
 
-→ [05-telefone-sem-fio.md](./05-telefone-sem-fio.md) · execução: [HANDOFF-DEPLOY.md](./HANDOFF-DEPLOY.md)
+→ [05-telefone-sem-fio.md](./05-telefone-sem-fio.md)
 
 ## Passo 11 — SOUL dos agentes
 
@@ -104,8 +96,7 @@ CROSSBOT_BOT_NAME=ops python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py \
 | Sintoma | Ação |
 |---------|------|
 | Outbox pending | Worker não usou crossbot_cli |
-| Remetente errado no TG | Atualizar para v2.2.4+ |
+| Remetente errado no TG | Atualizar para v2.3.0+ |
 | Bot não recebe | Conferir CROSSBOT_BOT_NAME |
-| DB isolado | Unificar MULTI_AGENT_TG_DB_PATH |
 
 → [../reference/debug-crossbot.md](../reference/debug-crossbot.md)

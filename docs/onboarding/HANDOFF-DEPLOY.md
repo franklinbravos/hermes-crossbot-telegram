@@ -1,8 +1,7 @@
 # Handoff — Deploy e validação cross-bot
 
 > **Para:** agente DevOps / operador do ambiente  
-> **Versão alvo:** kanban-context **2.2.4+**  
-> **Tempo estimado:** 30–45 min
+> **Versão alvo:** kanban-context **2.3.0+**
 
 Execute este documento **do início ao fim**. Ao terminar, preencha o [template de feedback](#template-de-feedback) e envie ao operador humano.
 
@@ -15,11 +14,11 @@ Execute este documento **do início ao fim**. Ao terminar, preencha o [template 
 ```bash
 cd ~/hermes-community-plugins && git pull
 
-grep '^version:' ~/hermes-community-plugins/kanban-context/plugin.yaml
-# Esperado: 2.2.4 ou superior
+grep '^version:' ~/hermes-community-plugins/plugins/kanban-context/plugin.yaml
+# Esperado: 2.3.0 ou superior
 
-cp -r ~/hermes-community-plugins/kanban-context ~/.hermes/plugins/kanban-context
-cp -r ~/hermes-community-plugins/multi-agent-context ~/.hermes/plugins/multi-agent-context
+chmod +x scripts/install.sh
+./scripts/install.sh cross-bot
 
 hermes gateway restart
 ```
@@ -43,7 +42,7 @@ print(mod.kanban_status())
 
 Checklist:
 
-- [ ] Versão **2.2.4+** no output
+- [ ] Versão **2.3.0+** no output
 - [ ] `MULTI_AGENT_TG_DB_PATH` idêntico em todos os profiles
 - [ ] Cada profile ativo tem `TELEGRAM_BOT_TOKEN` no `.env`
 - [ ] Cada profile ativo tem `CROSSBOT_BOT_NAME` = nome do profile
@@ -164,7 +163,7 @@ Copie, preencha e envie ao operador humano:
 
 ### Deploy
 - [ ] git pull OK
-- [ ] plugin.yaml >= 2.2.4
+- [ ] plugin.yaml >= 2.3.0
 - [ ] Gateways reiniciados: (listar)
 - [ ] /kanban-status OK
 

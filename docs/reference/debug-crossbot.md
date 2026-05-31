@@ -1,6 +1,6 @@
 # Debug Cross-Bot — Referência técnica
 
-> **Plugin:** kanban-context v2.2.4+  
+> **Plugin:** kanban-context v2.3.0+  
 > **Para:** DevOps, Cursor, agentes que debugam sem acesso ao host.
 
 ## Arquitetura
@@ -28,7 +28,7 @@ MULTI_AGENT_TG_DB_PATH=~/.hermes/data/multi_agent_tg_shared.db
 CROSSBOT_BOT_NAME=bravo
 
 # Telegram
-TELEGRAM_BOT_TOKEN=...              # por profile — usado para postar visibilidade (v2.2.4)
+TELEGRAM_BOT_TOKEN=...              # por profile — visibilidade (v2.3.0+)
 CROSSBOT_VISIBILITY_CHAT=-100...
 CROSSBOT_VISIBILITY_TOKEN=...       # fallback se profile sem token
 
@@ -83,16 +83,16 @@ Deve conter `crossbot_cli.py respond` ou `crossbot_respond`.
 
 ### 5. Remetente errado no Telegram?
 
-Versão < 2.2.4 usava token único. Atualize:
+Versão < 2.3.0 usava token único. Atualize:
 
 ```bash
 grep version ~/.hermes/plugins/kanban-context/plugin.yaml
-# deve ser 2.2.4
+# deve ser 2.3.0
 ```
 
 ## Bugs conhecidos (histórico)
 
-| Bug | Status v2.2.4 |
+| Bug | Status v2.3.0 |
 |-----|---------------|
 | telegram_msg_id NULL | ✅ Resolvido |
 | Telegram 400 reply cross-bot | ✅ Resolvido (sem reply entre tokens diferentes) |
@@ -111,8 +111,7 @@ grep version ~/.hermes/plugins/kanban-context/plugin.yaml
 
 ```bash
 cd hermes-community-plugins && git pull
-cp -r kanban-context ~/.hermes/plugins/kanban-context
-cp -r multi-agent-context ~/.hermes/plugins/multi-agent-context
+./scripts/install.sh cross-bot
 hermes gateway restart
 ```
 
