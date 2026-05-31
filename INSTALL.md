@@ -48,6 +48,7 @@ hermes gateway restart
 | `KANBAN_CONTEXT_CLEANUP_INTERVAL` | `86400` | Intervalo de manutenção (segundos, default 24h) |
 | `KANBAN_CONTEXT_OUTBOX_RETENTION` | `14` | Dias para manter mensagens concluídas |
 | `KANBAN_CONTEXT_LOG_RETENTION` | `7` | Dias para manter arquivos de log |
+| `CROSSBOT_VISIBILITY_CHAT` | *(empty)* | Chat ID do Telegram para espelhar mensagens cross-bot (visibilidade humana) |
 | `CROSSBOT_BOT_NAME` | *(nome do profile)* | Nome do bot para endereçamento no barramento |
 | `MULTI_AGENT_TG_DB_PATH` | `$HERMES_HOME/data/multi_agent_tg_shared.db` | Caminho do banco SQLite compartilhado |
 
@@ -103,6 +104,20 @@ Envie `/kanban-status` para qualquer agente rodando o plugin e receba:
 - Boards descobertos e seus tamanhos
 - Estatísticas do barramento (pending/done)
 - Saúde geral (✅ ou ⚠️ com detalhes)
+
+### 5. Visibilidade Cross-Bot no Grupo (v2.1.2)
+Mensagens entre bots agora podem ser **visíveis no Telegram** para supervisão humana.
+
+Configure `CROSSBOT_VISIBILITY_CHAT` no `.env` de cada perfil com o ID do grupo:
+```bash
+CROSSBOT_VISIBILITY_CHAT=-1003716565637
+```
+
+Cada `crossbot_send()` e `crossbot_respond()` posta automaticamente no grupo:
+- 📤 **Envio:** mostra remetente, destinatário, assunto, corpo e ID
+- 📥 **Resposta:** mostra quem respondeu e o conteúdo
+
+Sem resumos, sem omissões — o que os bots trocam, você vê.
 
 ---
 
