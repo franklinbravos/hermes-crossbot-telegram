@@ -583,9 +583,9 @@ crossbot_respond() → tenta reply_to → fallback sem reply → audit log
 
 | Bug | Status v2.2.2 | Notas |
 |-----|---------------|-------|
-| **#1 telegram_msg_id NULL** | ⚠️ Parcial | Salvo na visibilidade 📤; menções via LLM `send_message` ainda não capturam msg_id (post_llm pendente se necessário) |
-| **#2 Telegram 400 cross-bot reply** | ✅ Mitigado | `_get_visibility_token()` + retry sem reply; true threading só com **mesmo token** |
-| **#3 Worker sem crossbot_respond** | ✅ Corrigido agora | Tools registradas em `register()` — worker deve ver `crossbot_respond` igual `kanban_complete` |
+| **#1 telegram_msg_id NULL** | ✅ Resolvido | Salvo via `_post_visibility_message()` retorno. Teste #55: `telegram_msg_id=841` |
+| **#2 Telegram 400 cross-bot reply** | ✅ Resolvido | Token dedicado (`visibility-config.json`) + reply_to funciona quando mesmo bot posta 📤 e 📥. Teste #55: `reply_to=841, ok=true` |
+| **#3 Worker sem crossbot_respond** | ❌ **NÃO resolvido** | Tools registradas no plugin, mas kanban worker usa toolset `hermes-cli` que não inclui tools de plugins. Worker tenta import via terminal → `ModuleNotFoundError`. **Requer fix no Hermes Agent** |
 
 ---
 
@@ -658,6 +658,160 @@ Copie e preencha quando testar:
 - 📥 apareceu no Telegram? [sim/não]
 - Worker chamou crossbot_respond tool? [sim/não/kanban_complete only]
 - Audit log (colar últimas 5 linhas):
+```
+
+---
+
+---
+
+## Testes Realizados — Matias (31/05/2026 14:00-14:30)
+
+### Contexto do Teste
+
+- **Servidor:** allan-XPS-13-9380
+- **Plugin:** kanban-context v2.2.2 (74822 bytes, commit `547723b`)
+- **Profile testado:** ti (Matias) → bravo (Bravo)
+- **visibility-config.json:** Token preenchido (`8829691160:AAEKZbZL2...`)
+- **CROSSBOT_VISIBILITY_TOKEN:** Adicionado ao root `.env`
+
+### Teste #53 — Antes do token (baseline)
+
+```
+Timestamp: 1780247322 (14:08:42)
+De: Matias → Para: bravo
+Assunto: Status do franklinbravos.com
+```
+
+**Resultado:**
+- Outbox: `status=done`, `telegram_msg_id=none` ❌
+- Audit: `visibility_skip: no chat/token` ❌
+- Worker: Chamou `crossbot_respond` ✅
+- Visibility do response: `visibility_post ok=true, telegram_msg_id=839, attempt=no_reply` ✅
+
+**Conclusão:** Sem token, o 📤 de envio não vai. Mas o 📥 de resposta vai (porque o worker usou outro path).
+
+---
+
+### Teste #54 — Após preencher token
+
+```
+Timestamp: 1780247483 (14:11:23)
+De: Matias → Para: bravo
+Assunto: Teste visibilidade v2.2.2
+```
+
+**Resultado:**
+- Outbox: `status=done`, `telegram_msg_id=840` ✅
+- Audit (📤 sent): `visibility_post ok=true, telegram_msg_id=840, attempt=no_reply` ✅
+- Audit (crossbot_respond): `response_len=129` ✅
+- Audit (📥 responded): `visibility_skip: no chat/token` ❌
+
+**Conclusão:** 📤 de envio funciona com token. Mas o 📥 de resposta falhou — o worker do Bravo não encontrou o token no contexto dele.
+
+---
+
+### Teste #55 — Após restart dos gateways
+
+```
+Timestamp: 1780247811 (14:16:51)
+De: Matias → Para: bravo
+Assunto: Teste reply threading v2.2.2
+```
+
+**Resultado:**
+- Outbox: `status=done`, `telegram_msg_id=841` ✅
+- Audit (📤 sent): `visibility_post ok=true, telegram_msg_id=841, thread_id=637, attempt=no_reply` ✅
+- Audit (crossbot_respond): `response_len=173` ✅
+- Audit (📥 responded): `visibility_post ok=true, telegram_msg_id=842, reply_to=841, attempt=with_reply` ✅✅✅
+
+**Conclusão:** **REPLY THREADING FUNCIONOU!** O 📥 apareceu como reply ao 📤 (`reply_to=841`).
+
+---
+
+### Teste Manual — _post_visibility_message direto
+
+```
+Timestamp: 1780248011 (14:20:11)
+Bot: bravo
+Outbox ID: 999 (teste manual)
+```
+
+**Resultado:**
+- `visibility_post ok=true, telegram_msg_id=843, thread_id=637, attempt=no_reply` ✅
+
+**Conclusão:** A função `_post_visibility_message()` funciona corretamente quando chamada diretamente com o token configurado.
+
+---
+
+### Resumo dos Testes
+
+| # | Outbox | 📤 sent | 📥 responded | Reply | Token | Status |
+|---|--------|---------|--------------|-------|-------|--------|
+| 53 | #53 | ❌ skip | ✅ 839 | ❌ | ❌ | Partial |
+| 54 | #54 | ✅ 840 | ❌ skip | ❌ | ✅ | Partial |
+| 55 | #55 | ✅ 841 | ✅ 842 | ✅ reply_to=841 | ✅ | **FULL** |
+| manual | #999 | ✅ 843 | — | — | ✅ | OK |
+
+---
+
+### Bug #3 Confirmado — Worker não vê tools do plugin
+
+**Evidência dos logs do worker (bravo):**
+
+```
+2026-05-31 14:12:16,769 WARNING agent.tool_executor: Tool terminal returned error:
+  from kanban_context import crossbot_respond
+  ModuleNotFoundError: No module named 'kanban_context'
+```
+
+**Root Cause:**
+
+O kanban worker é spawned com o toolset `hermes-cli` definido em `toolsets.py`:
+
+```python
+_HERMES_CORE_TOOLS = [
+    "web_search", "web_extract", "terminal", "process",
+    "read_file", "write_file", "patch", "search_files",
+    # ... tools core ...
+    "kanban_show", "kanban_list", "kanban_complete", "kanban_block",
+    "kanban_heartbeat", "kanban_comment", "kanban_create", "kanban_link",
+    "kanban_unblock",
+    # ❌ crossbot_send e crossbot_respond NÃO estão aqui
+]
+
+TOOLSETS = {
+    "hermes-cli": {
+        "description": "Full interactive CLI toolset",
+        "tools": _HERMES_CORE_TOOLS,
+    },
+}
+```
+
+As tools `crossbot_send` e `crossbot_respond` são registradas via `ctx.register_tool()` no plugin, mas o worker não herda tools de plugins — só as do toolset `hermes-cli`.
+
+**Impacto:** O worker tenta chamar via `terminal` (Python direto), o que falha porque `kanban_context` não é um módulo Python importável (o diretório tem hífen: `kanban-context`).
+
+**Solução necessária (Hermes Agent):** Adicionar suporte para que workers kanban herdem tools registradas por plugins, OU adicionar `crossbot_send`/`crossbot_respond` ao `_HERMES_CORE_TOOLS`.
+
+---
+
+### Configuração Final
+
+**visibility-config.json** (preenchido manualmente, NÃO commitar):
+
+```json
+{
+  "telegram_bot_token": "8829691160:AAEKZbZL2...",
+  "visibility_chat_id": "-1003716565637",
+  "enabled": true,
+  "visibility_thread_id": "669"
+}
+```
+
+**root .env** (adicionado):
+
+```bash
+CROSSBOT_VISIBILITY_TOKEN=8829691160:AAEKZbZL2...
 ```
 
 ---
