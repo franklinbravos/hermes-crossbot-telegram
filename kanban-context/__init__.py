@@ -246,21 +246,63 @@ def crossbot_send(
     subject: str,
     body: str,
     kanban_task_id: str = "",
+    kanban_db_path: str = "",
 ) -> int:
     """Send a cross-bot message via the shared outbox.
+
+    If no kanban_task_id is provided, this function automatically creates
+    a Kanban task assigned to the target bot. This triggers the Kanban
+    dispatcher (~60s) to spawn a worker for the target bot, which reads
+    the pending outbox via the pre_llm_call hook.
 
     Args:
         to_bot: Target bot profile name (e.g. 'profile_name')
         subject: Short message subject/headline
         body: Full message body
-        kanban_task_id: Optional Kanban task ID for tracking
+        kanban_task_id: Optional Kanban task ID for tracking.
+                        If empty, one is auto-created.
+        kanban_db_path: Optional explicit kanban.db path.
+                        If empty, uses default path.
 
     Returns:
         The outbox row ID.
     """
+    import uuid as _uuid
+    import sqlite3 as _sqlite3
+    import json as _json
+
     conn = _open_shared_db()
     now = time.time()
     from_bot = _my_bot_name()
+
+    # Auto-create kanban task if not provided
+    if not kanban_task_id:
+        try:
+            kdb = kanban_db_path or str(_kanban_db())
+            _task_id = f"t_{_uuid.uuid4().hex[:12]}"
+            kconn = _sqlite3.connect(kdb, timeout=5)
+            try:
+                kconn.execute(
+                    "INSERT INTO tasks (id, title, body, assignee, status, priority, created_by, created_at) "
+                    "VALUES (?, ?, ?, ?, 'pending', 1, ?, ?)",
+                    (_task_id, subject[:200], body, to_bot, from_bot, now),
+                )
+                kconn.execute(
+                    "INSERT INTO task_events (task_id, kind, payload, created_at) "
+                    "VALUES (?, 'created', ?, ?)",
+                    (_task_id, _json.dumps({"by": from_bot, "title": subject[:200]}), now),
+                )
+                kconn.commit()
+                kanban_task_id = _task_id
+                logger.info(
+                    "crossbot: auto-created kanban task %s for '%s' (trigger dispatcher)",
+                    _task_id, to_bot,
+                )
+            finally:
+                kconn.close()
+        except Exception as exc:
+            logger.warning("crossbot: failed to auto-create kanban task: %s", exc)
+
     try:
         with conn:
             cur = conn.execute(
