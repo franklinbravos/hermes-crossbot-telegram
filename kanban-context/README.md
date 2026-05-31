@@ -70,18 +70,6 @@ report including:
 
 Programmatic access: `kanban_status()` returns the same report as a string.
 
-### 6. Cross-Bot Visibility in Telegram Groups (v2.1.2)
-By default, cross-bot messages are invisible to human users — they live only in
-the shared SQLite outbox. Set `CROSSBOT_VISIBILITY_CHAT` to a Telegram group chat
-ID to automatically **mirror every cross-bot message and response** in that group:
-
-- 📤 **Sent messages** show sender, recipient, subject, body, and outbox ID
-- 📥 **Responses** show who replied, the original subject, and the response text
-- Messages are posted in the exact same format — no summaries, no omissions
-
-This gives human operators full visibility into bot-to-bot communication while
-keeping the underlying mechanism unchanged.
-
 ## Requirements
 - Hermes Agent v0.13+ with plugin system
 - Python 3.11+
@@ -109,14 +97,10 @@ Restart the gateway.
 | `KANBAN_CONTEXT_EVENT_LIMIT` | `10` | Max events to inject per pre-LLM context block |
 | `KANBAN_CONTEXT_LOOKBACK_H` | `12` | Lookback window in hours |
 | `CROSSBOT_BOT_NAME` | *(profile name)* | This bot's name for outbox addressing |
-| `CROSSBOT_VISIBILITY_CHAT` | *(empty)* | Telegram chat ID to mirror cross-bot messages for human visibility |
 | `MULTI_AGENT_TG_DB_PATH` | `$HERMES_HOME/data/multi_agent_tg_shared.db` | Shared SQLite DB path |
 | `KANBAN_CONTEXT_CLEANUP_INTERVAL` | `86400` | Maintenance interval in seconds (default: 24h) |
 | `KANBAN_CONTEXT_OUTBOX_RETENTION` | `14` | Days to keep completed outbox messages |
 | `KANBAN_CONTEXT_LOG_RETENTION` | `7` | Days to keep plugin log files |
-| `KANBAN_CONTEXT_TOPIC_MAP` | *(empty)* | Topic-to-bot assignment: `chat_key=bot,...` |
-| `KANBAN_CONTEXT_MENTION_MAP` | *(empty)* | Bot @mention mapping: `BotName=@username,...` |
-| `CROSSBOT_BOT_NAME` | *(profile name)* | This bot's name for outbox + mention detection |
 
 ## Python API
 

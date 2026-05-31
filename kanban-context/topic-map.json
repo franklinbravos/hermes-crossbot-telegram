@@ -1,0 +1,22 @@
+{
+  "comment": "Mapeamento de bots para tópicos e handles no grupo Workspace - Hermes",
+  "chat_id": "-1003716565637",
+  "topics": {
+    "ti": 669,
+    "bravo": 637,
+    "catalogai": 638,
+    "crm-fast": 640,
+    "dado-seguro": 639,
+    "social-media": 641,
+    "hermes": 636
+  },
+  "handles": {
+    "ti": "matias_bravos_dev_bot",
+    "bravo": "bravos_consult_bot",
+    "catalogai": "catalogai_agent_bot",
+    "crm-fast": "CRM_fast_combr_bot",
+    "dado-seguro": "DadoSeguroBot",
+    "social-media": "SocialMediaBravosBot",
+    "hermes": "hermes_local_dell_xps_bot"
+  }
+}
