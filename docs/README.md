@@ -16,7 +16,7 @@
 | [Setup](./onboarding/02-setup-novo-projeto.md) | DevOps |
 | [Tópicos Telegram](./onboarding/03-topicos-telegram.md) | DevOps |
 | [Guia do agente](./onboarding/04-guia-agente-hermes.md) | Bots |
-| [Telefone sem fio](./onboarding/05-telefone-sem-fio.md) | Teste benchmark |
+| [Telefone sem fio](./onboarding/05-telefone-sem-fio.md) | `./scripts/telefone-sem-fio.sh` |
 | [SOUL prompt](./onboarding/AGENT-SYSTEM-PROMPT.md) | Colar no perfil |
 
 ## Referência

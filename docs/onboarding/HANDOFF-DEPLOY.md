@@ -109,24 +109,13 @@ Exemplo de roster: `ops,web,catalog,crm,data,social` — todos em `topic-map.jso
 
 ### Orchestrator — iniciar
 
-```bash
-ROUND="$(date +%Y%m%d-%H%M)"
-PHRASE="O rato roeu"
-ROSTER="{agent-1,agent-2,agent-3}"   # profiles reais, vírgula, sem espaços
-STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-FIRST="{agent-aleatorio}"            # sortear um do roster
+**Comando rápido (recomendado):**
 
-CROSSBOT_BOT_NAME={ORCHESTRATOR} python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py \
-  send "${FIRST}" \
-  "[TelefoneSemFio] round=${ROUND}" \
-  "TELEFONE_SEM_FIO
-round: ${ROUND}
-started_at: ${STARTED_AT}
-phrase: ${PHRASE}
-played: {ORCHESTRATOR}
-roster: ${ROSTER}
-hop: 1"
+```bash
+PHRASE="O rato roeu" ./scripts/telefone-sem-fio.sh
 ```
+
+Ou manualmente (ver bloco abaixo se precisar customizar roster).
 
 ### Cada jogador (automático via workers)
 

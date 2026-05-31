@@ -2,6 +2,35 @@
 
 > **Brincadeira + benchmark oficial.** Use após deploy ou quando quiser medir performance.
 
+## Comando rápido
+
+Na raiz do repositório (ou após `git pull`):
+
+```bash
+chmod +x scripts/telefone-sem-fio.sh
+PHRASE="O rato roeu" ./scripts/telefone-sem-fio.sh
+```
+
+Com orchestrator diferente do default:
+
+```bash
+ORCHESTRATOR=ops PHRASE="GATO BONITO" ./scripts/telefone-sem-fio.sh
+```
+
+O script lê o **roster** de `~/.hermes/plugins/kanban-context/topic-map.json` (todos os profiles exceto `orchestrator`), sorteia o primeiro jogador e dispara o `crossbot_send`.
+
+**Frase para pedir ao bot orchestrator no chat:**
+
+> Roda telefone sem fio: `PHRASE="O rato roeu" ~/hermes-community-plugins/scripts/telefone-sem-fio.sh`
+
+**Acompanhar:**
+
+```bash
+tail -f ~/.hermes/logs/kanban-context/crossbot-audit.jsonl | grep TelefoneSemFio
+```
+
+---
+
 ## O que é
 
 Percorre todos os agentes via `crossbot_send`. Cada um adiciona **duas palavras** e repassa para outro **aleatório** que ainda não jogou. Quando o roster esgota, a frase volta ao **orchestrator**, que reporta ao operador humano.

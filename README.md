@@ -25,6 +25,12 @@ plugins:
 → Setup completo: [docs/onboarding/02-setup-novo-projeto.md](./docs/onboarding/02-setup-novo-projeto.md)  
 → Handoff operador: [docs/onboarding/HANDOFF-DEPLOY.md](./docs/onboarding/HANDOFF-DEPLOY.md)
 
+**Teste cross-bot (telefone sem fio):**
+
+```bash
+PHRASE="O rato roeu" ./scripts/telefone-sem-fio.sh
+```
+
 ## Estrutura
 
 ```
@@ -47,7 +53,7 @@ docs/
 | Hub | [docs/README.md](./docs/README.md) |
 | Como funciona | [01-como-funciona.md](./docs/onboarding/01-como-funciona.md) |
 | Guia do agente | [04-guia-agente-hermes.md](./docs/onboarding/04-guia-agente-hermes.md) |
-| Telefone sem fio | [05-telefone-sem-fio.md](./docs/onboarding/05-telefone-sem-fio.md) |
+| Telefone sem fio | [05-telefone-sem-fio.md](./docs/onboarding/05-telefone-sem-fio.md) · `./scripts/telefone-sem-fio.sh` |
 
 ## Plugins
 
