@@ -1,9 +1,9 @@
 ---
 tags: [plugin, kanban-context, v2.2.0, cross-bot, reply-threading, debugging, telegram]
-status: draft
-version: 2.2.0
-created: 2026-05-31
+status: active-handoff
+version: 2.2.2
 updated: 2026-05-31
+owner: Cursor (Coder) — Matias = feedback only
 ---
 
 # Cross-Bot Reply Threading — Saga Técnica v2.2.0
@@ -27,6 +27,7 @@ updated: 2026-05-31
 8. [[#Logs e Evidências]]
 9. [[#Problemas Pendentes]]
 10. [[#Glossário]]
+11. [[#Resposta do Cursor — Handoff e Análise (v2.2.2)]]
 
 ---
 
@@ -533,4 +534,140 @@ def crossbot_respond(outbox_id, response_text):
 ---
 
 > **Documento gerado por Matias (DevOps) em 31/05/2026**
-> **Próximo passo:** Revisão pelo Cursos (IA auxiliar) para resolver os problemas pendentes
+> **Handoff:** Cursor assume desenvolvimento — Matias só valida e reporta no grupo
+
+---
+
+## Resposta do Cursor — Handoff e Análise (v2.2.2)
+
+> **De:** Cursor (Coder)  
+> **Para:** Matias (DevOps) — canal de feedback via este documento  
+> **Data:** 2026-05-31  
+> **Commit alvo:** `8e00b0e` + patch local `v2.2.2` (tools)
+
+### Mudança de responsabilidade
+
+A partir de agora **eu assumo o plugin**. Seu papel:
+
+1. **Deploy** — `git pull`, copiar plugin, `hermes gateway restart`
+2. **Teste** — enviar cross-bot, colar audit log se falhar
+3. **Feedback** — reportar aqui ou no grupo: sintoma + outbox ID + últimas linhas do log
+
+Não precisa mais editar código.
+
+---
+
+### Análise das últimas alterações
+
+| Commit | Autor | O que fez |
+|--------|-------|-----------|
+| `b5ec61c` | Matias | v2.2.0 base: topic-map, visibility-config, telegram_msg_id, auto-mentions, visibilidade por tópico |
+| `87e3c76` | Matias | Este documento técnico |
+| `8e00b0e` | Cursor | `_get_visibility_token()`, retry sem reply on 400, audit JSONL, pending com outbox ID |
+| **local** | Cursor | **v2.2.2:** `register_tool(crossbot_send)` + `register_tool(crossbot_respond)` |
+
+#### Correção importante no doc original
+
+O doc menciona hook `post_llm_call` / `_post_llm_update_outbox` — **não está no código commitado** (`b5ec61c` nem `HEAD`). O `telegram_msg_id` hoje vem do **post de visibilidade** em `crossbot_send()` (não do `send_message` do LLM). Isso explica parte da confusão nos testes.
+
+Fluxo real atual:
+
+```
+crossbot_send() → _post_visibility_message("sent") → salva telegram_msg_id no outbox
+crossbot_respond() → tenta reply_to → fallback sem reply → audit log
+```
+
+---
+
+### Status dos bugs do Matias
+
+| Bug | Status v2.2.2 | Notas |
+|-----|---------------|-------|
+| **#1 telegram_msg_id NULL** | ⚠️ Parcial | Salvo na visibilidade 📤; menções via LLM `send_message` ainda não capturam msg_id (post_llm pendente se necessário) |
+| **#2 Telegram 400 cross-bot reply** | ✅ Mitigado | `_get_visibility_token()` + retry sem reply; true threading só com **mesmo token** |
+| **#3 Worker sem crossbot_respond** | ✅ Corrigido agora | Tools registradas em `register()` — worker deve ver `crossbot_respond` igual `kanban_complete` |
+
+---
+
+### Ação obrigatória para Matias (deploy v2.2.2)
+
+#### 1. Preencher `visibility-config.json`
+
+Arquivo atual tem **token vazio**:
+
+```json
+"telegram_bot_token": ""   ← PRECISA do token do Matias (bot dedicado)
+```
+
+Copie o token do bot que posta visibilidade (ex: `@matias_bot`) para `kanban-context/visibility-config.json` **ou** defina no `.env` global:
+
+```bash
+CROSSBOT_VISIBILITY_TOKEN=8829691160:AAEK...
+```
+
+Sem isso, worker Bravo usa token errado e 📥 falha silenciosamente.
+
+#### 2. Deploy
+
+```bash
+cd ~/hermes-community-plugins && git pull
+cp -r kanban-context ~/.hermes/plugins/kanban-context
+hermes gateway restart
+```
+
+#### 3. Teste outbox #53+
+
+```bash
+# Ver outbox
+sqlite3 ~/.hermes/data/multi_agent_tg_shared.db \
+  "SELECT id,status,telegram_msg_id FROM outbox ORDER BY id DESC LIMIT 3;"
+
+# Ver audit (enviar de volta pro Cursor se falhar)
+tail -20 ~/.hermes/logs/kanban-context/crossbot-audit.jsonl
+```
+
+**Critério de sucesso:**
+- Outbox `status=done`
+- Linha `"event":"crossbot_respond"` no audit log
+- Linha `"event":"visibility_post"` com `"ok":true`
+- 📥 visível no tópico Bravo (637) — com ou sem quote (quote só se mesmo token)
+
+---
+
+### Problemas pendentes (Cursor ownership)
+
+| # | Item | Plano |
+|---|------|-------|
+| P1 | True reply threading cross-bot | Usar sempre `visibility-config` token; reply_to só quando mesmo bot postou 📤 |
+| P2 | post_llm hook para send_message | Implementar se fluxo @mention via LLM precisar msg_id do send_message nativo |
+| P3 | visibility-config.json com token vazio no repo | Matias preenche no servidor — **não commitar token** |
+| P4 | `linkedin-content` board hardcoded | Parametrizar via `CROSSBOT_KANBAN_BOARD` (já suportado em versões anteriores — verificar se v2.2.0 manteve) |
+
+---
+
+### Template de feedback para Matias
+
+Copie e preencha quando testar:
+
+```
+## Feedback Matias — outbox #___
+
+- Deploy: git pull + restart feito? [sim/não]
+- visibility-config token preenchido? [sim/não]
+- Outbox status: ___
+- 📥 apareceu no Telegram? [sim/não]
+- Worker chamou crossbot_respond tool? [sim/não/kanban_complete only]
+- Audit log (colar últimas 5 linhas):
+```
+
+---
+
+### Referências adicionais
+
+- [[docs/CROSSBOT-DEBUG.md]] — checklist operacional
+- [[docs/FEATURE-MAP.md]] — fluxos end-to-end
+
+---
+
+> **Próximo passo (Matias):** deploy v2.2.2 + preencher token + teste #53 + feedback neste doc  
+> **Próximo passo (Cursor):** commit/push v2.2.2 após Franklin autorizar

@@ -862,6 +862,13 @@ def crossbot_respond(outbox_id: int, response_text: str) -> bool:
             return False
 
         logger.info("crossbot: message #%d responded (%d chars)", outbox_id, len(response_text))
+        _crossbot_audit_log(
+            "crossbot_respond",
+            outbox_id=outbox_id,
+            response_len=len(response_text),
+            from_bot=orig[0] if orig else None,
+            to_bot=orig[1] if orig else None,
+        )
 
         # Post visibility message to Telegram group — reply to original message
         if orig:
@@ -884,6 +891,45 @@ def crossbot_respond(outbox_id: int, response_text: str) -> bool:
         return True
     finally:
         conn.close()
+
+
+def _crossbot_send_tool(args: dict, **kwargs) -> str:
+    """Hermes tool — send a cross-bot message."""
+    to_bot = (args.get("to_bot") or "").strip()
+    subject = (args.get("subject") or "").strip()
+    body = (args.get("body") or "").strip()
+    if not to_bot or not body:
+        return json.dumps({"error": "to_bot and body are required"})
+    outbox_id = crossbot_send(
+        to_bot=to_bot,
+        subject=subject or "(no subject)",
+        body=body,
+        kanban_task_id=(args.get("kanban_task_id") or "").strip(),
+    )
+    return json.dumps({
+        "outbox_id": outbox_id,
+        "to_bot": to_bot,
+        "message": f"Cross-bot message #{outbox_id} queued for '{to_bot}'.",
+    })
+
+
+def _crossbot_respond_tool(args: dict, **kwargs) -> str:
+    """Hermes tool — respond to a pending cross-bot message."""
+    try:
+        outbox_id = int(args.get("outbox_id"))
+    except (TypeError, ValueError):
+        return json.dumps({"error": "outbox_id must be an integer"})
+    response_text = (args.get("response_text") or "").strip()
+    if not response_text:
+        return json.dumps({"error": "response_text is required"})
+    ok = crossbot_respond(outbox_id, response_text)
+    if not ok:
+        return json.dumps({"error": f"outbox message #{outbox_id} not found", "ok": False})
+    return json.dumps({
+        "ok": True,
+        "outbox_id": outbox_id,
+        "message": f"Response recorded for cross-bot message #{outbox_id}.",
+    })
 
 
 def _fetch_pending_messages(for_bot: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -2049,6 +2095,47 @@ def register(ctx) -> None:
     # Run proactive validation
     vr = run_validation()
     vr.log()
+
+    ctx.register_tool(
+        name="crossbot_send",
+        handler=lambda args, **kw: _crossbot_send_tool(args, **kw),
+        schema={
+            "name": "crossbot_send",
+            "description": (
+                "Send a message to another Hermes bot profile via the shared cross-bot outbox. "
+                "Returns outbox_id. Target bot receives via Kanban worker + [Pending Messages]."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to_bot": {"type": "string", "description": "Target profile name (e.g. bravo)."},
+                    "subject": {"type": "string", "description": "Short subject."},
+                    "body": {"type": "string", "description": "Full message body."},
+                    "kanban_task_id": {"type": "string", "description": "Optional existing task ID."},
+                },
+                "required": ["to_bot", "body"],
+            },
+        },
+    )
+    ctx.register_tool(
+        name="crossbot_respond",
+        handler=lambda args, **kw: _crossbot_respond_tool(args, **kw),
+        schema={
+            "name": "crossbot_respond",
+            "description": (
+                "MANDATORY for cross-bot Kanban workers — call BEFORE kanban_complete. "
+                "Marks outbox done and posts response visibility to Telegram."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "outbox_id": {"type": "integer", "description": "Outbox ID from task body or [Pending Messages]."},
+                    "response_text": {"type": "string", "description": "Full reply to sender."},
+                },
+                "required": ["outbox_id", "response_text"],
+            },
+        },
+    )
 
     ctx.register_hook("pre_llm_call", _inject_kanban_context)
     ctx.register_hook("pre_llm_call", _handle_status_command)
