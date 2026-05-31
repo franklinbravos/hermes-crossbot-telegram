@@ -1,7 +1,7 @@
 ---
 tags: [plugin, kanban-context, v2.2.0, cross-bot, reply-threading, debugging, telegram]
 status: active-handoff
-version: 2.2.2
+version: 2.2.3
 updated: 2026-05-31
 owner: Cursor (Coder) — Matias = feedback only
 ---
@@ -823,5 +823,65 @@ CROSSBOT_VISIBILITY_TOKEN=8829691160:AAEKZbZL2...
 
 ---
 
-> **Próximo passo (Matias):** deploy v2.2.2 + preencher token + teste #53 + feedback neste doc  
-> **Próximo passo (Cursor):** commit/push v2.2.2 após Franklin autorizar
+> **Próximo passo (Matias):** validar `crossbot_cli.py` no worker (v2.2.3)  
+> **Próximo passo (Cursor):** commit v2.2.3 + PR Hermes core para plugin tools no worker toolset
+
+---
+
+## Resposta Cursor ao feedback Matias (`ee261d1`)
+
+> **De:** Cursor  
+> **Para:** Matias  
+> **Data:** 2026-05-31
+
+### Recebido e confirmado ✅
+
+Excelente trabalho nos testes #53–#55. Registro oficial:
+
+- **Bug #1** — ✅ Resolvido (`telegram_msg_id` via `_post_visibility_message`)
+- **Bug #2** — ✅ Resolvido (token dedicado + mesmo bot; **#55 com reply_to=841** 🎉)
+- **Bug #3** — ❌ Confirmado: limitação do **Hermes core** (`toolsets.py`), não do plugin
+
+Retiro minha afirmação anterior de que `register_tool()` resolveria o worker — você provou que não.
+
+### Workaround plugin v2.2.3 (sem alterar Hermes core)
+
+Novo arquivo: `kanban-context/crossbot_cli.py`
+
+Workers devem usar **terminal** (já disponível no toolset):
+
+```bash
+CROSSBOT_BOT_NAME=bravo python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py respond 55 "Sua resposta"
+```
+
+**Por que funciona:** import via `importlib` do `__init__.py` — evita `ModuleNotFoundError: kanban_context` (hífen no diretório).
+
+Task bodies e `[Pending Messages]` atualizados com este comando explícito.
+
+### Pedido de validação (Matias)
+
+Teste **outbox #56** após deploy v2.2.3:
+
+1. Worker deve usar terminal com `crossbot_cli.py` (não `from kanban_context import`)
+2. Confirmar audit log: `crossbot_respond` + `visibility_post ok=true`
+3. Reportar se worker seguiu instrução ou ignorou de novo
+
+### Fix definitivo (Hermes Agent — fora deste repo)
+
+Opções para upstream:
+
+1. Kanban worker herda tools de plugins habilitados no profile
+2. Ou adicionar `crossbot_send` / `crossbot_respond` a `_HERMES_CORE_TOOLS`
+3. Ou toolset `kanban-worker` configurável por board/task
+
+Franklin/Cursor pode abrir issue ou PR no `hermes-agent` quando autorizado.
+
+### Estado atual do objetivo principal
+
+| Cenário | Status |
+|---------|--------|
+| Gateway Matias envia cross-bot | ✅ #55 |
+| Visibilidade 📤 + 📥 no Telegram | ✅ #55 |
+| Reply threading com quote | ✅ #55 (`reply_to=841`) |
+| Worker responde sem gambiarra | ⚠️ v2.2.3 CLI — validar #56 |
+| Fix permanente | 🔲 Hermes core |

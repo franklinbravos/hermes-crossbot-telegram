@@ -297,12 +297,7 @@ def _auto_create_task_from_mention(
             f"Outbox ID: {outbox_id}\n\n"
             f"{message_text}\n\n"
             f"---\n"
-            f"INSTRUCTION TO WORKER:\n"
-            f"1. Set CROSSBOT_BOT_NAME={to_bot} in os.environ\n"
-            f"2. Process the message above\n"
-            f"3. Reply by calling crossbot_respond({outbox_id}, \"your response\")\n"
-            f"4. The response will appear in the Telegram group automatically\n"
-            f"5. Do NOT message Franklin in DM unless explicitly asked"
+            f"{_format_worker_crossbot_instruction(outbox_id, to_bot)}"
         )
 
         _kc_db_path = _kanban_db_path(_kc_board)
@@ -427,6 +422,25 @@ def _write_visibility_config(data: dict) -> bool:
     except Exception as exc:
         logger.warning("visibility-config: failed to write %s: %s", path, exc)
         return False
+
+
+def _crossbot_cli_path() -> str:
+    """Absolute path to crossbot_cli.py for worker terminal instructions."""
+    return str((Path(__file__).resolve().parent / "crossbot_cli.py"))
+
+
+def _format_worker_crossbot_instruction(outbox_id: int, to_bot: str) -> str:
+    """Instructions for Kanban workers without plugin tools in toolset."""
+    cli = _crossbot_cli_path()
+    return (
+        f"INSTRUCTION TO WORKER (outbox #{outbox_id}):\n"
+        f"1. Read and process the message above\n"
+        f"2. You do NOT have crossbot_respond as a tool — use terminal instead:\n"
+        f'   CROSSBOT_BOT_NAME={to_bot} python3 "{cli}" respond {outbox_id} "YOUR RESPONSE"\n'
+        f"3. Call the above BEFORE kanban_complete\n"
+        f"4. Do NOT use: from kanban_context import ... (module does not exist)\n"
+        f"5. Do NOT message Franklin in DM unless explicitly asked"
+    )
 
 
 def _setup_visibility_config() -> bool:
@@ -757,12 +771,7 @@ def crossbot_send(
                 f"Subject: {subject}\n\n"
                 f"{body}\n\n"
                 f"---\n"
-                f"INSTRUCTION TO WORKER:\n"
-                f"1. Process the message content above\n"
-                f"2. Set CROSSBOT_BOT_NAME={to_bot} in os.environ before calling crossbot_respond\n"
-                f"3. Reply by calling crossbot_respond({row_id}, \"your response\")\n"
-                f"4. Do NOT message Franklin in DM unless explicitly asked\n"
-                f"5. The crossbot_respond function is in the kanban_context plugin"
+                f"{_format_worker_crossbot_instruction(row_id, to_bot)}"
             )
 
             _kc_db_path = _kanban_db_path(_kc_board)
@@ -1106,7 +1115,10 @@ def _read_pending_messages() -> str:
         lines.append(f"  > {body}")
     lines.extend([
         "",
-        "⚠️ MANDATORY — call crossbot_respond BEFORE kanban_complete:",
+        "⚠️ MANDATORY — workers without crossbot_respond tool must use terminal:",
+        f'  CROSSBOT_BOT_NAME={_my_bot_name()} python3 "{_crossbot_cli_path()}" respond OUTBOX_ID "reply"',
+        "",
+        "Or if crossbot_respond tool is available:",
     ])
     for msg in pending:
         lines.append(f"  crossbot_respond(outbox_id={msg['id']}, response_text=\"<reply>\")")
