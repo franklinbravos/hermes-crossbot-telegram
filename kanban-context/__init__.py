@@ -73,12 +73,34 @@ def _hermes_home() -> Path:
     return _HERMES_HOME
 
 
+def _real_hermes_home() -> Path:
+    """Resolve the real Hermes home directory, which may differ from
+    the profile-isolated HERMES_HOME.
+
+    Under profile isolation (profiles/<name>/), HERMES_HOME points to
+    e.g. ~/.hermes/profiles/ti/, but the kanban database lives at
+    the real root ~/.hermes/kanban.db (shared across all profiles).
+    """
+    h = _hermes_home()
+    # Walk up if we're inside a profiles/<name>/ directory
+    parts = h.parts
+    if "/profiles/" in str(h) or (len(parts) >= 2 and parts[-2] == "profiles"):
+        return h.parent.parent
+    # Fallback: check if kanban.db exists in the parent
+    try:
+        if h.parent.joinpath("kanban.db").is_file():
+            return h.parent
+    except Exception:
+        pass
+    return h
+
+
 def _kanban_db() -> Path:
-    return _hermes_home() / "kanban.db"
+    return _real_hermes_home() / "kanban.db"
 
 
 def _boards_dir() -> Path:
-    return _hermes_home() / "kanban" / "boards"
+    return _real_hermes_home() / "kanban" / "boards"
 
 
 def _shared_db_path() -> str:
