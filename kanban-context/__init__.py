@@ -300,28 +300,62 @@ def crossbot_send(
     # Auto-create kanban task if not provided
     if not kanban_task_id:
         try:
-            kdb = kanban_db_path or str(_kanban_db())
+            # Find/create a kanban board database for the task
+            _kdb = None
+            _board_name = "cross-bot"
+            boards_dir = _boards_dir()
+            _init_schema = (
+                "CREATE TABLE IF NOT EXISTS tasks ("
+                "id TEXT PRIMARY KEY, title TEXT, body TEXT, assignee TEXT, "
+                "status TEXT, priority INTEGER, created_by TEXT, created_at REAL"
+                ")"
+            )
+            if boards_dir.is_dir():
+                for _bd in sorted(os.listdir(str(boards_dir))):
+                    _candidate = boards_dir / _bd / "kanban.db"
+                    if _candidate.is_file():
+                        _kdb = _candidate
+                        _board_name = _bd
+                        break
+            if _kdb is None:
+                # Create cross-bot board if no existing board
+                _kdb = boards_dir / "cross-bot" / "kanban.db"
+                os.makedirs(str(_kdb.parent), exist_ok=True)
+                _kconn_init = _sqlite3.connect(str(_kdb), timeout=5)
+                try:
+                    _kconn_init.execute(_init_schema)
+                    _kconn_init.commit()
+                finally:
+                    _kconn_init.close()
+
             _task_id = f"t_{_uuid.uuid4().hex[:12]}"
-            kconn = _sqlite3.connect(kdb, timeout=5)
+            _kconn = _sqlite3.connect(str(_kdb), timeout=5)
             try:
-                kconn.execute(
+                # Check if tasks table exists (board may lack schema)
+                _has_tasks = _kconn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'"
+                ).fetchone()
+                if not _has_tasks:
+                    _kconn.execute(_init_schema)
+
+                _kconn.execute(
                     "INSERT INTO tasks (id, title, body, assignee, status, priority, created_by, created_at) "
                     "VALUES (?, ?, ?, ?, 'pending', 1, ?, ?)",
-                    (_task_id, subject[:200], body, to_bot, from_bot, now),
+                    (_task_id, f"[Cross-Bot] {subject[:150]}", body, to_bot, from_bot, now),
                 )
-                kconn.execute(
+                _kconn.execute(
                     "INSERT INTO task_events (task_id, kind, payload, created_at) "
                     "VALUES (?, 'created', ?, ?)",
-                    (_task_id, _json.dumps({"by": from_bot, "title": subject[:200]}), now),
+                    (_task_id, _json.dumps({"by": from_bot, "title": subject[:150]}), now),
                 )
-                kconn.commit()
+                _kconn.commit()
                 kanban_task_id = _task_id
                 logger.info(
-                    "crossbot: auto-created kanban task %s for '%s' (trigger dispatcher)",
-                    _task_id, to_bot,
+                    "crossbot: auto-created kanban task %s for '%s' in board '%s' (trigger dispatcher)",
+                    _task_id, to_bot, _board_name,
                 )
             finally:
-                kconn.close()
+                _kconn.close()
         except Exception as exc:
             logger.warning("crossbot: failed to auto-create kanban task: %s", exc)
 
