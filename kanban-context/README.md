@@ -101,6 +101,9 @@ Restart the gateway.
 | `KANBAN_CONTEXT_CLEANUP_INTERVAL` | `86400` | Maintenance interval in seconds (default: 24h) |
 | `KANBAN_CONTEXT_OUTBOX_RETENTION` | `14` | Days to keep completed outbox messages |
 | `KANBAN_CONTEXT_LOG_RETENTION` | `7` | Days to keep plugin log files |
+| `KANBAN_CONTEXT_TOPIC_MAP` | *(empty)* | Topic-to-bot assignment: `chat_key=bot,...` |
+| `KANBAN_CONTEXT_MENTION_MAP` | *(empty)* | Bot @mention mapping: `BotName=@username,...` |
+| `CROSSBOT_BOT_NAME` | *(profile name)* | This bot's name for outbox + mention detection |
 
 ## Python API
 
