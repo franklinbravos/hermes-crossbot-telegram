@@ -92,6 +92,7 @@ Incorpora **kanban-context** (Franklin Bravos) e **multi-agent-context** (Kaishi
 | `fui-ao-mercado.sh` | Benchmark tema mercado/feira (+1 item) |
 | `telefone-sem-fio.sh` | Benchmark tema telefone (+2 palavras) |
 | `benchmark-report.sh` | Tempo total e % sucesso |
+| `crossbot-debug-pack.sh` | Modo debug — zip factual para enviar ao dev |
 
 ---
 

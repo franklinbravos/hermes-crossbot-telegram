@@ -447,14 +447,94 @@ def _resolve_sent_telegram_msg_id(
     return None
 
 
-def _format_worker_crossbot_instruction(outbox_id: int, to_bot: str) -> str:
-    """Short worker guidance for mention-relay tasks."""
+def _crossbot_cli_path() -> str:
+    return str(_plugin_dir / "crossbot_cli.py")
+
+
+def _is_benchmark_chain_body(text: str) -> bool:
+    t = text or ""
+    return any(
+        m in t
+        for m in ("BENCHMARK_CHAIN", "TELEFONE_SEM_FIO", "FUI_AO_MERCADO")
+    )
+
+
+def _parse_benchmark_block(text: str) -> Dict[str, str]:
+    """Parse key: value lines from a benchmark chain block."""
+    fields: Dict[str, str] = {}
+    if not text:
+        return fields
+    start = None
+    for marker in ("BENCHMARK_CHAIN", "TELEFONE_SEM_FIO", "FUI_AO_MERCADO"):
+        idx = text.find(marker)
+        if idx >= 0:
+            start = idx
+            break
+    if start is None:
+        return fields
+    chunk = text[start:]
+    for line in chunk.splitlines()[1:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("==="):
+            break
+        if ":" not in stripped:
+            continue
+        key, val = stripped.split(":", 1)
+        fields[key.strip()] = val.strip()
+    return fields
+
+
+def _read_kanban_task_body(task_id: str) -> str:
+    """Load task body from the cross-bot kanban board (worker env fallback)."""
+    if not task_id:
+        return ""
+    db_path = (
+        _real_hermes_home()
+        / "kanban"
+        / "boards"
+        / _crossbot_kanban_board()
+        / "kanban.db"
+    )
+    if not db_path.is_file():
+        return ""
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=5)
+        try:
+            row = conn.execute(
+                "SELECT body FROM tasks WHERE id=? LIMIT 1",
+                (task_id,),
+            ).fetchone()
+            return (row[0] or "") if row else ""
+        finally:
+            conn.close()
+    except Exception:
+        return ""
+
+
+def _format_worker_crossbot_instruction(
+    outbox_id: int, to_bot: str, body: str = ""
+) -> str:
+    """Worker guidance for cross-bot Kanban tasks."""
+    cli = _crossbot_cli_path()
+    if _is_benchmark_chain_body(body):
+        return (
+            f"INSTRUCTION TO WORKER (outbox #{outbox_id}) — BENCHMARK CHAIN:\n"
+            f"1. Siga o bloco BENCHMARK_CHAIN / SEU PAPEL acima (repetir + incrementar).\n"
+            f"2. OBRIGATÓRIO — feche o outbox ANTES de kanban_complete:\n"
+            f"   python3 {cli} respond {outbox_id} \"<frase atualizada completa>\"\n"
+            f"3. O plugin repassa automaticamente ao próximo jogador da cadeia.\n"
+            f"4. kanban_complete(summary=\"...\", metadata={{\"phrase\": \"...\", \"round\": \"...\", \"hop\": N}})\n"
+            f"5. Resposta vazia ou só kanban_complete deixa outbox pending — proibido."
+        )
     return (
         f"INSTRUCTION TO WORKER (outbox #{outbox_id}):\n"
-        f"1. Read the message from @{to_bot}'s colleague above\n"
-        f"2. Reply naturally in your own words\n"
-        f"3. The plugin publishes your reply to Telegram automatically\n"
-        f"4. Then call kanban_complete — no crossbot_cli needed"
+        f"1. Read the message above\n"
+        f"2. Reply in your own words\n"
+        f"3. Prefer: python3 {cli} respond {outbox_id} \"your reply\"\n"
+        f"   (or include the reply text in kanban_complete summary — plugin auto-closes outbox)\n"
+        f"4. Then call kanban_complete"
     )
 
 
@@ -999,7 +1079,7 @@ def crossbot_send(
                 f"Subject: {subject}\n\n"
                 f"{body}\n\n"
                 f"---\n"
-                f"{_format_worker_crossbot_instruction(row_id, to_bot)}"
+                f"{_format_worker_crossbot_instruction(row_id, to_bot, body)}"
             )
 
             _task_id = _create_crossbot_kanban_task(
@@ -1066,7 +1146,134 @@ def crossbot_send(
     return row_id
 
 
-def crossbot_respond(outbox_id: int, response_text: str) -> bool:
+def _maybe_relay_benchmark_chain(
+    *,
+    outbox_id: int,
+    responder: str,
+    response_text: str,
+    orig_body: str,
+    subject: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Optional[int]:
+    """Forward benchmark chain to the next hop after a player completes."""
+    if not _is_benchmark_chain_body(orig_body):
+        return None
+
+    state = _parse_benchmark_block(orig_body)
+    if not state:
+        return None
+
+    metadata = metadata or {}
+    chain = [b.strip() for b in state.get("chain_order", "").split(",") if b.strip()]
+    if not chain and isinstance(metadata.get("roster"), list):
+        chain = [str(x).strip() for x in metadata["roster"] if str(x).strip()]
+
+    orchestrator = (
+        state.get("orchestrator")
+        or state.get("played")
+        or ""
+    ).strip()
+    if not orchestrator:
+        conn = _open_shared_db()
+        try:
+            row = conn.execute(
+                "SELECT from_bot FROM outbox WHERE id=?",
+                (outbox_id,),
+            ).fetchone()
+            if row:
+                orchestrator = (row[0] or "").strip()
+        finally:
+            conn.close()
+
+    round_id = state.get("round") or str(metadata.get("round") or "")
+    theme = state.get("theme") or "telefone"
+    theme_label = state.get("theme_label") or subject
+    increment_rule = state.get("increment_rule") or "add_two_words"
+    total_steps = int(state.get("total_steps") or len(chain) or 1)
+
+    new_phrase = ""
+    if metadata.get("phrase"):
+        new_phrase = str(metadata["phrase"]).strip()
+    if not new_phrase:
+        meta_block = _parse_benchmark_block(response_text)
+        new_phrase = meta_block.get("phrase", "").strip()
+    if not new_phrase:
+        new_phrase = state.get("phrase", "").strip()
+
+    try:
+        step_num = int(state.get("step") or metadata.get("hop") or 1)
+    except (TypeError, ValueError):
+        step_num = 1
+
+    try:
+        idx = chain.index(responder)
+    except ValueError:
+        idx = max(0, step_num - 1)
+
+    if idx + 1 < len(chain):
+        next_bot = chain[idx + 1]
+        next_step = idx + 2
+        status = "IN_PROGRESS"
+    else:
+        next_bot = orchestrator
+        next_step = total_steps + 1
+        status = "COMPLETE"
+
+    forward_body = (
+        f"BENCHMARK_CHAIN\n"
+        f"round: {round_id}\n"
+        f"theme: {theme}\n"
+        f"theme_label: {theme_label}\n"
+        f"increment_rule: {increment_rule}\n"
+        f"orchestrator: {orchestrator}\n"
+        f"phrase: {new_phrase}\n"
+        f"chain_order: {','.join(chain)}\n"
+        f"step: {next_step}\n"
+        f"total_steps: {total_steps}\n"
+        f"played: {responder}\n"
+        f"next: {next_bot}\n"
+        f"status: {status}\n"
+        f"\n"
+        f"=== SEU PAPEL (benchmark — repasse automático) ===\n"
+        f"Jogador anterior ({responder}) repassou a frase.\n"
+        f"Destinatário: {next_bot}. Siga increment_rule e repasse na ordem chain_order.\n"
+    )
+    if status == "COMPLETE":
+        forward_body += (
+            f"\nCoordenador {orchestrator}: rodada COMPLETE — rode benchmark-report.sh {round_id}\n"
+        )
+
+    fwd_subject = f"[BenchmarkChain] theme={theme} round={round_id}"
+    if "BenchmarkChain" not in subject and "TelefoneSemFio" in subject:
+        fwd_subject = subject.replace("TelefoneSemFio", "BenchmarkChain")
+
+    new_id = crossbot_send(
+        to_bot=next_bot,
+        subject=fwd_subject,
+        body=forward_body,
+    )
+    _crossbot_audit_log(
+        "benchmark_relay",
+        outbox_id=outbox_id,
+        new_outbox_id=new_id,
+        from_bot=responder,
+        to_bot=next_bot,
+        round=round_id,
+        step=next_step,
+        status=status,
+    )
+    logger.info(
+        "crossbot: benchmark relay #%d -> #%d (%s -> %s, step %d)",
+        outbox_id, new_id, responder, next_bot, next_step,
+    )
+    return new_id
+
+
+def crossbot_respond(
+    outbox_id: int,
+    response_text: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> bool:
     """Mark a message as done with the response text.
 
     Args:
@@ -1128,6 +1335,18 @@ def crossbot_respond(outbox_id: int, response_text: str) -> bool:
                 outbox_id=outbox_id,
                 post_as_bot=responder,
                 citation_html=citation_html,
+            )
+
+        orig_body = (orig[6] or "") if orig else ""
+        orig_subject = (orig[2] or "") if orig else ""
+        if orig_body and _is_benchmark_chain_body(orig_body):
+            _maybe_relay_benchmark_chain(
+                outbox_id=outbox_id,
+                responder=(orig[1] if orig else _my_bot_name()),
+                response_text=response_text,
+                orig_body=orig_body,
+                subject=orig_subject,
+                metadata=metadata,
             )
 
         return True
@@ -2005,10 +2224,57 @@ def _outbox_id_for_current_worker() -> Optional[int]:
         finally:
             conn.close()
 
+        task_body = _read_kanban_task_body(task_id)
+        import re
+        m = re.search(r"\[CROSS-BOT MESSAGE #(\d+)\]", task_body)
+        if m:
+            oid = int(m.group(1))
+            conn = _open_shared_db()
+            try:
+                row = conn.execute(
+                    "SELECT status FROM outbox WHERE id=?",
+                    (oid,),
+                ).fetchone()
+                if row and row[0] == "pending":
+                    return oid
+            finally:
+                conn.close()
+
     pending = _fetch_pending_messages()
     if len(pending) == 1:
         return int(pending[0]["id"])
     return None
+
+
+def _finish_crossbot_from_kanban(
+    *,
+    summary: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Close pending outbox when a Kanban worker completes (summary may be only text)."""
+    outbox_id = _outbox_id_for_current_worker()
+    if not outbox_id:
+        return
+
+    conn = _open_shared_db()
+    try:
+        row = conn.execute(
+            "SELECT status, body, subject, to_bot FROM outbox WHERE id=?",
+            (outbox_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row or row[0] != "pending":
+        return
+
+    metadata = metadata or {}
+    response_text = summary.strip()
+    if metadata.get("phrase"):
+        response_text = str(metadata["phrase"]).strip()
+    elif not response_text:
+        response_text = "(completed via kanban)"
+
+    crossbot_respond(outbox_id, response_text, metadata=metadata)
 
 
 def _relay_mentions_from_assistant(**kwargs) -> None:
@@ -2072,9 +2338,32 @@ def _auto_complete_crossbot_response(**kwargs) -> None:
 
     if crossbot_respond(outbox_id, assistant_response):
         logger.info(
-            "kanban-context: auto-completed crossbot outbox #%d for worker %s",
+            "crossbot: auto-completed outbox #%d for worker %s (post_llm_call)",
             outbox_id, _my_bot_name(),
         )
+    return None
+
+
+def _on_post_tool_call(**kwargs) -> None:
+    """post_tool_call — kanban_complete closes outbox even when final_response is empty."""
+    if kwargs.get("tool_name") != "kanban_complete":
+        return None
+    if not _is_kanban_worker_session():
+        return None
+
+    args = kwargs.get("args") or {}
+    if not isinstance(args, dict):
+        return None
+
+    summary = (args.get("summary") or args.get("result") or "").strip()
+    metadata = args.get("metadata") or {}
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except json.JSONDecodeError:
+            metadata = {}
+
+    _finish_crossbot_from_kanban(summary=summary, metadata=metadata)
     return None
 
 
@@ -2443,6 +2732,7 @@ def register(ctx) -> None:
     ctx.register_hook("pre_llm_call", _auto_detect_mentions)
     ctx.register_hook("post_llm_call", _shared_history.record_telegram_turn)
     ctx.register_hook("post_llm_call", _post_llm_mention_relay)
+    ctx.register_hook("post_tool_call", _on_post_tool_call)
     logger.info(
         "crossbot plugin v%s registered (tg_db=%s, history=%d)",
         _get_plugin_version(),

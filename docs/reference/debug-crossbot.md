@@ -24,6 +24,30 @@ Dispatcher (~60s) → worker receiver
 **DB:** `~/.hermes/data/multi_agent_tg_shared.db`  
 **Audit:** `~/.hermes/logs/crossbot/crossbot-audit.jsonl`
 
+## Debug pack
+
+Pacote padronizado para análise remota — **não depende do relatório do agente Hermes**.
+
+```bash
+~/hermes-crossbot-telegram/scripts/crossbot-debug-pack.sh enable
+~/hermes-crossbot-telegram/scripts/crossbot-debug-pack.sh pack -r 20260601-1608
+~/hermes-crossbot-telegram/scripts/crossbot-debug-pack.sh pack    # sem filtro
+~/hermes-crossbot-telegram/scripts/crossbot-debug-pack.sh status
+~/hermes-crossbot-telegram/scripts/crossbot-debug-pack.sh disable
+```
+
+| Comando | Ação |
+|---------|------|
+| `enable` | Cria `~/.hermes/plugins/crossbot/debug-mode.json` |
+| `pack [-r ROUND]` | Zip + `REPORT.md` factual em `~/.hermes/logs/crossbot/packs/` |
+| `status` / `disable` | Ver ou desligar modo debug |
+
+**Conteúdo do zip:** `MANIFEST.json`, `REPORT.md`, audit JSONL, dumps outbox/kanban, `topic-map.json`, `visibility-config.json` (tokens redigidos), tail do gateway.
+
+O `REPORT.md` aplica **alertas automáticos** (`NO_CROSSBOT_RESPOND_IN_AUDIT`, `BENCHMARK_CHAIN_NOT_RELAYED`, `VISIBILITY_POST_FAILED`, etc.).
+
+Para o Hermes: *"Gera o pacote de debug do crossbot do round X"* → `pack -r X` e enviar o zip.
+
 ## Variáveis de ambiente
 
 ```bash
@@ -44,6 +68,7 @@ CROSSBOT_MENTION_DEDUP_SECONDS=60  # evita tasks duplicadas por menção repetid
 
 # Debug
 CROSSBOT_AUDIT_LOG=~/.hermes/logs/crossbot/crossbot-audit.jsonl
+# Modo debug: scripts/crossbot-debug-pack.sh enable
 ```
 
 ## Checklist de diagnóstico

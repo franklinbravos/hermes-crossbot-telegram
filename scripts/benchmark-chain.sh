@@ -133,6 +133,7 @@ theme_label: ${THEME_LABEL}
 increment_rule: ${INCREMENT_RULE}
 phrase: ${OPENING}
 chain_order: ${CHAIN_ORDER}
+orchestrator: ${ORCHESTRATOR}
 step: 1
 total_steps: ${TOTAL_STEPS}
 played: ${ORCHESTRATOR}
@@ -208,3 +209,10 @@ echo "Relatório:"
 echo "  ${REPO_ROOT}/scripts/benchmark-report.sh ${ROUND}"
 echo ""
 echo "Docs: docs/onboarding/05-benchmark-cadeia.md"
+
+DEBUG_CFG="${HOME}/.hermes/plugins/crossbot/debug-mode.json"
+if [[ -f "$DEBUG_CFG" ]] && grep -q '"enabled"[[:space:]]*:[[:space:]]*true' "$DEBUG_CFG" 2>/dev/null; then
+  echo ""
+  echo "Modo debug ON — gere o pacote factual e envie ao dev:"
+  echo "  ${REPO_ROOT}/scripts/crossbot-debug-pack.sh pack -r ${ROUND}"
+fi

@@ -82,6 +82,10 @@ Vamos testar se os bots se falam de verdade? Inicia o jogo "fui ao mercado" com 
 
 Quando terminar:
 ~/hermes-crossbot-telegram/scripts/benchmark-report.sh
+
+# Debug (zip factual para enviar ao dev)
+~/hermes-crossbot-telegram/scripts/crossbot-debug-pack.sh enable
+~/hermes-crossbot-telegram/scripts/crossbot-debug-pack.sh pack -r <ROUND>
 ```
 
 ---
