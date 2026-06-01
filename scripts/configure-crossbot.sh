@@ -68,7 +68,7 @@ pick_orchestrator() {
     return
   fi
 
-  echo "Quem é o orchestrator (coordena telefone sem fio e reporta ao humano)?"
+  echo "Quem é o coordenador (inicia o teste \"fui ao mercado\" e reporta ao humano)?"
   local i=1 choice
   for name in "${ALL_PROFILES[@]}"; do
     echo "  ${i}) ${name}"
@@ -108,7 +108,7 @@ pick_players() {
     return
   fi
 
-  read -r -p "Jogadores do telefone sem fio [${default_list}]: " reply
+  read -r -p "Jogadores do benchmark (ordem da cadeia) [${default_list}]: " reply
   if [[ -z "${reply// /}" ]]; then
     echo "$default_list"
   else
@@ -284,7 +284,7 @@ PY
 echo ""
 echo "✓ Escrito: ${TOPIC_MAP}"
 echo ""
-echo "Roster telefone sem fio:"
+echo "Roster (fui ao mercado — ordem da cadeia):"
 echo "  orchestrator: ${ORCH}"
 echo "  jogadores:    ${PLAYER_CSV}"
 echo ""
@@ -295,5 +295,6 @@ done
 
 echo ""
 echo "Próximo passo:"
-echo "  PHRASE=\"O rato roeu\" ./scripts/telefone-sem-fio.sh"
+echo "  ./scripts/fui-ao-mercado.sh"
+echo "  ./scripts/benchmark-report.sh"
 echo "  (orchestrator detectado automaticamente se rodar no contexto do profile ${ORCH})"

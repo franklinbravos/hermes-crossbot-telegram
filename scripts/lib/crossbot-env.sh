@@ -118,7 +118,7 @@ resolve_orchestrator() {
 
   echo "Error: could not detect orchestrator (initiating bot)." >&2
   echo "Run from a Hermes profile context, set CROSSBOT_BOT_NAME, or:" >&2
-  echo "  ORCHESTRATOR=<profile> PHRASE=\"...\" ./scripts/telefone-sem-fio.sh" >&2
+  echo "  ./scripts/fui-ao-mercado.sh" >&2
   echo "Configure defaults: ./scripts/configure-crossbot.sh" >&2
   return 1
 }
@@ -174,7 +174,7 @@ if missing:
         print(f"  - {name}", file=sys.stderr)
     print(f"Profiles found in {profiles_dir}: {', '.join(on_disk) or '(none)'}", file=sys.stderr)
     print("", file=sys.stderr)
-    print("The telefone-sem-fio roster must use real folder names from ~/.hermes/profiles/.", file=sys.stderr)
+    print("The fui-ao-mercado roster must use real folder names from ~/.hermes/profiles/.", file=sys.stderr)
     print("Run: ./scripts/configure-crossbot.sh", file=sys.stderr)
     sys.exit(1)
 

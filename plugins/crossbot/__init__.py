@@ -70,10 +70,18 @@ logger = logging.getLogger(__name__)
 _plugin_dir = Path(__file__).resolve().parent
 if str(_plugin_dir) not in sys.path:
     sys.path.insert(0, str(_plugin_dir))
-try:
-    import shared_history as _shared_history
-except ImportError:
-    from . import shared_history as _shared_history  # type: ignore[no-redef]
+
+def _load_shared_history():
+    import importlib.util
+    sh_path = _plugin_dir / "shared_history.py"
+    spec = importlib.util.spec_from_file_location("crossbot_shared_history", sh_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load shared_history from {sh_path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+_shared_history = _load_shared_history()
 
 # ---------------------------------------------------------------------------
 # Path resolution

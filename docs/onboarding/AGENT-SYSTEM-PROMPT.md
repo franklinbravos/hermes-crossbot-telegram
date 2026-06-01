@@ -40,7 +40,7 @@ Use a coluna **Profile** da tabela de colegas como `PROFILE_COLEGA`.
 
 ### Telefone sem fio
 
-Subject `[TelefoneSemFio]`: +2 palavras · atualizar played · sortear colega não jogado · crossbot_cli respond antes de kanban_complete
+Subject `[FuiAoMercado]`: repetir phrase + 1 item · repassar ao `next` da chain_order · último manda COMPLETE ao coordenador
 
 ### Coordenação no grupo
 

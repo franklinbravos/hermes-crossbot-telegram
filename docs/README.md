@@ -17,7 +17,7 @@ Plugin Hermes para mensagem **bot-to-bot no Telegram** (outbox, Kanban, mention 
 | [Instalar e adaptar](./onboarding/02-instalar-e-adaptar.md) | Deploy humano / DevOps |
 | [Workspace e colegas](./onboarding/03-workspace-e-colegas.md) | **Obrigatório** — tópicos + mapa |
 | [Guia do agente Hermes](./onboarding/04-guia-agente-hermes.md) | Agentes / SOUL |
-| [Telefone sem fio](./onboarding/05-telefone-sem-fio.md) | Benchmark cross-bot |
+| [Fui ao mercado](./onboarding/05-fui-ao-mercado.md) | Benchmark cross-bot |
 | [AGENT-SYSTEM-PROMPT](./onboarding/AGENT-SYSTEM-PROMPT.md) | Prompt base |
 
 ## Referência

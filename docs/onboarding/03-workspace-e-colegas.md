@@ -102,7 +102,7 @@ Template editável: [../reference/mapa-colegas.template.md](../reference/mapa-co
 |------|--------|------|
 | **Menção @** | Humano fala com um bot no workspace | `@handle pergunta` no tópico do departamento |
 | **Cross-bot (mention relay)** | Bot delega a outro bot | `@handle_colega` + pedido na resposta — plugin cria outbox + task |
-| **Cross-bot (explícito)** | Debug, telefone-sem-fio, integração | `crossbot_send` ou `crossbot_cli` |
+| **Cross-bot (explícito)** | Debug, benchmark *fui ao mercado*, integração | `crossbot_send` ou menção @ |
 
 Menção @ cobre **humano→bot** e **bot→bot** no fluxo normal (crossbot v0.5+).
 
@@ -135,6 +135,6 @@ Operador humano acompanha no workspace sem abrir DMs.
 - [ ] Novo tópico no workspace
 - [ ] Atualizar `topic-map.json`
 - [ ] Atualizar SOUL de **todos** os agentes (tabela de colegas)
-- [ ] Smoke test + opcional telefone sem fio
+- [ ] Smoke test *fui ao mercado* (`./scripts/fui-ao-mercado.sh`)
 
 → [04-guia-agente-hermes.md](./04-guia-agente-hermes.md)

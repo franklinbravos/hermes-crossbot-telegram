@@ -139,7 +139,7 @@ cd ~/hermes-crossbot-telegram && ./scripts/bootstrap.sh --yes --update-only
 
 **Teste recomendado:** peça ao bot A que `@mencione` o bot B numa conversa normal; confirme task Kanban + resposta no Telegram.
 
-**Benchmark avançado:** [Telefone sem fio](../onboarding/05-telefone-sem-fio.md)
+**Benchmark avançado:** [Fui ao mercado](../onboarding/05-fui-ao-mercado.md)
 
 ## Schema outbox
 

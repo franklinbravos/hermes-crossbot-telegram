@@ -57,38 +57,39 @@ CROSSBOT_BOT_NAME=bravos_consult_bot python3 ~/.hermes/plugins/kanban-context/cr
 
 ---
 
-## 3. COMO FAZER CADEIA AUTÔNOMA (telefone sem fio)
+## 3. BENCHMARK — Fui ao mercado / Fui à feira
 
-Quando precisar encaminhar uma mensagem para o próximo bot na cadeia,
-**COPIE a instrução inteira** que recebeu, atualize:
-- FRASE ATUAL: adicione suas 2 palavras
-- QUEM JOGOU: adicione seu nome
-- QUEM FALTA: remova seu nome
-- Escolha aleatoriamente um da lista QUEM FALTA
-- Se QUEM FALTA ficar vazia, envie para "ti" em vez de um agente
+Brincadeira em cadeia: cada bot **repete a frase inteira** e acrescenta **um item**.
 
-**Formato que FUNCIONA (validado em produção):**
+**Chamada natural (boot):** *"Joga fui ao mercado com o time."*
+
+**Papéis — não confunda:**
+- **Coordenador:** inicia e, no fim, reporta tempo + sucesso 100%
+- **Jogador:** só repete + 1 item + repassa ao próximo da fila
+- **Não** trate como suporte, ticket ou tarefa de cliente
+
+**Formato no body da mensagem (FUI_AO_MERCADO):**
 ```
-📞 TELEFONE SEM FIO — JOGO ENTRE AGENTES
-
-REGRAS OBRIGATÓRIAS:
-1. Adicione EXATAMENTE DUAS palavras à frase abaixo
-2. NÃO mude ou remova palavras existentes
-3. Escolha ALEATORIAMENTE um agente da lista QUEM FALTA
-4. Se QUEM FALTA estiver vazia, envie para Matias (bot: ti)
-5. Use crossbot_cli.py via terminal para enviar ao próximo
-
-FRASE ATUAL: <frase aqui>
-QUEM JOGOU: [lista de quem já jogou]
-QUEM FALTA: [lista de quem ainda não jogou]
-
-SUA VEZ! Adicione 2 palavras à frase.
-
-COMO ENVIAR AO PRÓXIMO (use terminal):
-CROSSBOT_BOT_NAME=<SEU_NOME_BOT> python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py send <PROXIMO_BOT> "Telefone sem fio" "<COPIE_ESTA_INSTRUÇÃO_COMPLETA>"
-
-IMPORTANTE: COPIE TODA esta instrução no body, atualizando frase e listas.
+phrase: Fui ao mercado e comprei uma maçã e um sabão
+chain_order: bot-a,bot-b,bot-c
+step: 2
+next: bot-c
+status: IN_PROGRESS
 ```
+
+**Sua vez:**
+1. Leia `phrase` — repita **sem mudar** palavras existentes
+2. Acrescente **um** item: `… e um pão`
+3. Repasse ao `next` (mention @ ou crossbot)
+4. Atualize step, played, phrase no body para o próximo
+
+**Último jogador:** envia ao coordenador com `status: COMPLETE`
+
+**Relatório:** `~/hermes-crossbot-telegram/scripts/benchmark-report.sh <ROUND>`
+
+❌ Não mude palavras já ditas  
+❌ Não pule colegas da `chain_order`  
+❌ Não invente outra missão
 
 ---
 
@@ -109,7 +110,7 @@ IMPORTANTE: COPIE TODA esta instrução no body, atualizando frase e listas.
 
 ❌ **Não use o literal "ESCOLHA" como destinatário** — é um placeholder, substitua pelo nome real do bot
 ❌ **Não trunque o body** — quando encaminhar, COPIE a instrução inteira
-❌ **Não mude palavras existentes** — em jogos de telefone sem fio, só adicione
+❌ **Não mude palavras existentes** — em *fui ao mercado*, só acrescente um item no final
 ❌ **Não responda sem usar crossbot_cli.py** — responder normalmente não registra no outbox
 ❌ **Não use @mentions em mensagens cross-bot** — causa HTTP 400
 ❌ **Não tente importar kanban_context diretamente** — use o crossbot_cli.py via terminal

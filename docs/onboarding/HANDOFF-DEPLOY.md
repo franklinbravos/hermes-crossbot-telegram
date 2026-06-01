@@ -5,7 +5,7 @@
 
 Execute este documento **do início ao fim**. Ao terminar, preencha o [template de feedback](#template-de-feedback) e envie ao operador humano.
 
-**Documentação relacionada:** [02-instalar-e-adaptar.md](./02-instalar-e-adaptar.md) · [03-workspace-e-colegas.md](./03-workspace-e-colegas.md) · [05-telefone-sem-fio.md](./05-telefone-sem-fio.md)
+**Documentação relacionada:** [02-instalar-e-adaptar.md](./02-instalar-e-adaptar.md) · [03-workspace-e-colegas.md](./03-workspace-e-colegas.md) · [05-fui-ao-mercado.md](./05-fui-ao-mercado.md)
 
 ---
 
@@ -70,7 +70,7 @@ Checklist:
 
 Colar o bloco de [AGENT-SYSTEM-PROMPT.md](./AGENT-SYSTEM-PROMPT.md) no SOUL/instructions de **cada** profile listado em `topic-map.json`.
 
-- [ ] Orchestrator (profile que inicia telefone sem fio)
+- [ ] Coordenador (profile que inicia *fui ao mercado*)
 - [ ] Demais profiles jogadores
 
 Atualize a tabela de bots no prompt com os profiles **deste** ambiente.
@@ -107,49 +107,22 @@ Anote o **outbox ID** do smoke test: ___________
 
 ---
 
-## 6. Telefone sem fio (benchmark oficial)
+## 6. Fui ao mercado (benchmark oficial)
 
-Leia [05-telefone-sem-fio.md](./05-telefone-sem-fio.md) antes de executar.
+Leia [05-fui-ao-mercado.md](./05-fui-ao-mercado.md) antes de executar.
 
-### Papéis neste ambiente
-
-Preencha antes de rodar:
-
-| Papel | Profile neste ambiente |
-|-------|------------------------|
-| Orchestrator | `{ORCHESTRATOR}` |
-| Roster (jogadores) | `{ROSTER}` |
-
-Exemplo de roster: `ops,web,catalog,crm,data,social` — todos em `topic-map.json` **exceto** o orchestrator.
-
-### Orchestrator — iniciar
-
-**Comando rápido (recomendado):**
+**Chamada natural:** *"Vamos testar se os bots se falam? Joga fui ao mercado."*
 
 ```bash
-PHRASE="O rato roeu" ./scripts/telefone-sem-fio.sh
+./scripts/fui-ao-mercado.sh
+./scripts/benchmark-report.sh
 ```
-
-Ou manualmente (ver bloco abaixo se precisar customizar roster).
-
-### Cada jogador (automático via workers)
-
-Regras — ver doc 05:
-
-1. +2 palavras à `phrase`
-2. Atualizar `played`
-3. Sortear próximo de `roster - played`
-4. Se sobrou → repassar | Se não → enviar para `{ORCHESTRATOR}` com `status: COMPLETE`
-5. `crossbot_cli respond` **antes** de `kanban_complete`
-
-### Orchestrator — reportar ao operador humano
-
-Quando receber `status: COMPLETE`, monte o relatório usando o [template de feedback](#template-de-feedback).
 
 Métricas:
 
 ```bash
-grep TelefoneSemFio ~/.hermes/logs/crossbot/crossbot-audit.jsonl | tail -20
+grep FuiAoMercado ~/.hermes/logs/crossbot/crossbot-audit.jsonl | tail -20
+cat ~/.hermes/logs/crossbot/benchmark-*.json | tail -30
 ```
 
 ---

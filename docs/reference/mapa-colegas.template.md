@@ -43,4 +43,4 @@ Sempre que entrar ou sair um agente:
 2. Atualizar esta tabela no SOUL de **todos** os colegas
 3. Rodar smoke test entre dois profiles
 
-Gerar roster do telefone sem fio: todos os profiles em `topic-map.json` (exceto orchestrator, se houver).
+Gerar roster do *fui ao mercado*: todos os profiles em `topic-map.json` (exceto coordenador), em ordem alfabética.

@@ -73,12 +73,15 @@ Quero que o crossbot se atualize sozinho todo dia de madrugada. Configura a roti
 
 ---
 
-## Testar se os bots estão se falando (telefone sem fio)
+## Testar se os bots se entendem (fui ao mercado)
 
 ```
-Roda um teste de telefone sem fio entre os bots do crossbot com a frase "O rato roeu a roupa do rei de Roma". Me diz quem recebeu, se apareceu no Telegram e se algum bot ficou sem responder.
+Vamos testar se os bots se falam de verdade? Inicia o jogo "fui ao mercado" com todos do time — cada um repete a frase, acrescenta um item e repassa pro próximo. No final me diz quanto tempo levou e se deu 100% de sucesso ou onde parou.
 
-PHRASE="O rato roeu a roupa do rei de Roma" ~/hermes-crossbot-telegram/scripts/telefone-sem-fio.sh
+~/hermes-crossbot-telegram/scripts/fui-ao-mercado.sh
+
+Quando terminar:
+~/hermes-crossbot-telegram/scripts/benchmark-report.sh
 ```
 
 ---

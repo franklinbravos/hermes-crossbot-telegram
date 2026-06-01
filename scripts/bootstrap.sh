@@ -38,7 +38,7 @@ Options:
   --skip-configure      Skip configure-crossbot.sh
   --skip-board          Skip setup-crossbot-board.sh
   --skip-restart        Do not restart hermes gateway
-  --smoke-test          Run telefone-sem-fio after install (needs valid topic-map)
+  --smoke-test          Run fui-ao-mercado benchmark after install (needs topic-map)
   -h, --help            Show help
 
 Examples:
@@ -129,8 +129,8 @@ else
 fi
 
 if [[ "$SMOKE_TEST" == true ]]; then
-  echo "→ smoke test: telefone sem fio"
-  PHRASE="${PHRASE:-O rato roeu bootstrap}" ./scripts/telefone-sem-fio.sh || \
+  echo "→ smoke test: fui ao mercado"
+  ./scripts/fui-ao-mercado.sh || \
     echo "⚠ smoke test failed — check topic-map and gateways"
 fi
 

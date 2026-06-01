@@ -71,10 +71,11 @@ Incorpora **kanban-context** (Franklin Bravos) e **multi-agent-context** (Kaishi
 ## Teste
 
 ```bash
-PHRASE="O rato roeu" ~/hermes-crossbot-telegram/scripts/telefone-sem-fio.sh
+~/hermes-crossbot-telegram/scripts/fui-ao-mercado.sh
+~/hermes-crossbot-telegram/scripts/benchmark-report.sh
 ```
 
-→ [docs/onboarding/05-telefone-sem-fio.md](./docs/onboarding/05-telefone-sem-fio.md)
+→ [docs/onboarding/05-benchmark-cadeia.md](./docs/onboarding/05-benchmark-cadeia.md)
 
 ---
 
@@ -87,7 +88,10 @@ PHRASE="O rato roeu" ~/hermes-crossbot-telegram/scripts/telefone-sem-fio.sh
 | `auto-update.sh` | Pull + reinstall + migrate |
 | `setup-auto-update-cron.sh` | Agenda cron diário |
 | `configure-crossbot.sh` | topic-map + CROSSBOT_BOT_NAME |
-| `telefone-sem-fio.sh` | Benchmark cross-bot |
+| `benchmark-chain.sh` | Motor unificado (cadeia cumulativa) |
+| `fui-ao-mercado.sh` | Benchmark tema mercado/feira (+1 item) |
+| `telefone-sem-fio.sh` | Benchmark tema telefone (+2 palavras) |
+| `benchmark-report.sh` | Tempo total e % sucesso |
 
 ---
 

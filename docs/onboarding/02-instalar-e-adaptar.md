@@ -101,7 +101,7 @@ chmod +x scripts/configure-crossbot.sh
 
 O script pergunta:
 - qual profile é o **orchestrator**
-- quais profiles entram no **telefone sem fio**
+- quais profiles entram no **fui ao mercado**
 - `chat_id` e `thread_id` do workspace
 - opcionalmente grava `CROSSBOT_BOT_NAME` no `.env` de cada profile
 
@@ -173,7 +173,8 @@ CROSSBOT_BOT_NAME=<profile-a> python3 ~/.hermes/plugins/crossbot/crossbot_cli.py
   send <profile-b> "Smoke test" "Confirme recebimento"
 
 # Benchmark completo (orchestrator = bot que roda o script, detectado automaticamente)
-PHRASE="O rato roeu" ./scripts/telefone-sem-fio.sh
+./scripts/fui-ao-mercado.sh
+./scripts/benchmark-report.sh
 ```
 
 `/kanban-status` em qualquer agente · checklist em [HANDOFF-DEPLOY.md](./HANDOFF-DEPLOY.md)
@@ -210,4 +211,4 @@ Use só se **não** existir nenhum profile Hermes.
 |-----|----------|
 | [03-workspace-e-colegas.md](./03-workspace-e-colegas.md) | Workspace + mapa de colegas (obrigatório) |
 | [04-guia-agente-hermes.md](./04-guia-agente-hermes.md) | Regras para os bots |
-| [05-telefone-sem-fio.md](./05-telefone-sem-fio.md) | Teste benchmark |
+| [05-fui-ao-mercado.md](./05-fui-ao-mercado.md) | Teste benchmark |

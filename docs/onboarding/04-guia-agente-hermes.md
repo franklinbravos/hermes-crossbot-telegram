@@ -70,7 +70,7 @@ Ou a tool `crossbot_send` quando disponível no toolset.
 
 ## Telefone sem fio
 
-→ [05-telefone-sem-fio.md](./05-telefone-sem-fio.md) (benchmark com `crossbot_cli`, não fluxo principal)
+→ [05-fui-ao-mercado.md](./05-fui-ao-mercado.md) (benchmark — responda naturalmente; plugin publica no Telegram)
 
 ## Contexto injetado
 
