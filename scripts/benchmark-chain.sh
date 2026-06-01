@@ -205,6 +205,18 @@ echo ""
 echo "Monitorar:"
 echo "  tail -f ~/.hermes/logs/crossbot/crossbot-audit.jsonl | grep BenchmarkChain"
 echo ""
+
+# Gravar round no state do onboarding (step 9)
+"$PYTHON" -c "
+import sys
+sys.path.insert(0, '${REPO_ROOT}/plugins/crossbot')
+try:
+    import onboarding as ob
+    ob.record_benchmark_round('${ROUND}')
+except Exception:
+    pass
+" 2>/dev/null || true
+
 echo "Relatório:"
 echo "  ${REPO_ROOT}/scripts/benchmark-report.sh ${ROUND}"
 echo ""

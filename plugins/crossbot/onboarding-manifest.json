@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "min_plugin_version": "0.5.2",
+  "step_order": ["1", "2", "3a", "3b", "4", "5", "6", "7", "8", "9", "10"],
+  "steps": {
+    "1": {
+      "id": "1",
+      "title": "Instalar plugin",
+      "doc_path": "docs/onboarding/steps/01-install.md",
+      "verifier": "plugin_install",
+      "timeout_seconds": 60,
+      "action_hint": "cd ~/hermes-crossbot-telegram && ./scripts/bootstrap.sh --yes",
+      "failure_hints": [
+        "Confirme plugins/crossbot/plugin.yaml version >= 0.5.2",
+        "Hooks devem incluir post_tool_call",
+        "Rode: ./scripts/crossbot-onboarding.sh verify"
+      ]
+    },
+    "2": {
+      "id": "2",
+      "title": "Migrar legado",
+      "doc_path": "docs/onboarding/steps/02-migrate.md",
+      "verifier": "legacy_migrate",
+      "timeout_seconds": 30,
+      "action_hint": "Bootstrap já migra; confirme ausência de kanban-context ativo",
+      "failure_hints": [
+        "Remova ~/.hermes/plugins/kanban-context e multi-agent-context",
+        "Rode ./scripts/bootstrap.sh --yes novamente"
+      ]
+    },
+    "3a": {
+      "id": "3a",
+      "title": "topic-map",
+      "doc_path": "docs/onboarding/steps/03a-topic-map.md",
+      "verifier": "topic_map",
+      "timeout_seconds": 60,
+      "action_hint": "./scripts/configure-crossbot.sh",
+      "failure_hints": [
+        "orchestrator deve existir em topic-map.json topics",
+        "Cada profile precisa de pasta em ~/.hermes/profiles/",
+        "handles Telegram devem ser reais (@bot)"
+      ]
+    },
+    "3b": {
+      "id": "3b",
+      "title": "Visibilidade probe",
+      "doc_path": "docs/onboarding/steps/03b-visibility-probe.md",
+      "verifier": "visibility_probe",
+      "timeout_seconds": 120,
+      "action_hint": "Corrija visibility-config.json — chat_id real, sem placeholder",
+      "failure_hints": [
+        "visibility_chat_id não pode conter X ou placeholder",
+        "Orchestrator precisa TELEGRAM_BOT_TOKEN no .env se visibility token vazio",
+        "Grep audit: chat not found indica config errada no momento do send"
+      ]
+    },
+    "4": {
+      "id": "4",
+      "title": "Board Kanban cross-bot",
+      "doc_path": "docs/onboarding/steps/04-kanban-board.md",
+      "verifier": "kanban_board",
+      "timeout_seconds": 30,
+      "action_hint": "./scripts/setup-crossbot-board.sh",
+      "failure_hints": [
+        "Board cross-bot deve existir em ~/.hermes/kanban/boards/cross-bot/"
+      ]
+    },
+    "5": {
+      "id": "5",
+      "title": "Gateways e env",
+      "doc_path": "docs/onboarding/steps/05-gateways-env.md",
+      "verifier": "gateways_env",
+      "timeout_seconds": 120,
+      "action_hint": "hermes gateway restart — todos os profiles do topic-map",
+      "failure_hints": [
+        "CROSSBOT_BOT_NAME deve igualar nome da pasta do profile",
+        "MULTI_AGENT_TG_DB_PATH / crossbot.db idêntico em todos profiles",
+        "Warning: hermes gateway service install --replace se TimeoutStopSec < drain"
+      ]
+    },
+    "6": {
+      "id": "6",
+      "title": "Ping bot1",
+      "doc_path": "docs/onboarding/steps/06-ping-bot1.md",
+      "verifier": "ping_bot1",
+      "timeout_seconds": 120,
+      "action_hint": "./scripts/crossbot-onboarding.sh run-action",
+      "failure_hints": [
+        "visibility_post ok=true no audit",
+        "thread_id deve bater com topic-map[to_bot]",
+        "Aguarde kanban task ser criada"
+      ]
+    },
+    "7": {
+      "id": "7",
+      "title": "Resposta bot1",
+      "doc_path": "docs/onboarding/steps/07-bot1-respond.md",
+      "verifier": "bot1_respond",
+      "timeout_seconds": 240,
+      "action_hint": "Worker usa kanban_complete(summary, metadata) — NÃO terminal/crossbot_cli",
+      "failure_hints": [
+        "WORKER_TERMINAL_BLOCKED: security scan bloqueou terminal — use kanban_complete",
+        "KANBAN_DONE_OUTBOX_PENDING: atualize plugin >= 0.5.2 com post_tool_call",
+        "verify --watch 180 antes de desistir (dispatcher 60s)"
+      ]
+    },
+    "8": {
+      "id": "8",
+      "title": "Ping bot2 / 2º salto",
+      "doc_path": "docs/onboarding/steps/08-ping-bot2.md",
+      "verifier": "ping_bot2",
+      "timeout_seconds": 240,
+      "action_hint": "Relay automático após step 7 ou send manual ao 2º jogador",
+      "failure_hints": [
+        "Audit deve ter benchmark_relay ou segundo outbox",
+        "Segundo jogador precisa gateway running"
+      ]
+    },
+    "9": {
+      "id": "9",
+      "title": "Benchmark cadeia",
+      "doc_path": "docs/onboarding/steps/09-benchmark.md",
+      "verifier": "benchmark_chain",
+      "timeout_seconds": 600,
+      "action_hint": "./scripts/fui-ao-mercado.sh && ./scripts/benchmark-report.sh",
+      "failure_hints": [
+        "benchmark-report success=true e COMPLETE visto",
+        "Gere debug-pack se falhar: crossbot-debug-pack.sh pack -r ROUND"
+      ]
+    },
+    "10": {
+      "id": "10",
+      "title": "Handoff",
+      "doc_path": "docs/onboarding/steps/10-handoff.md",
+      "verifier": "handoff",
+      "timeout_seconds": 120,
+      "action_hint": "./scripts/crossbot-debug-pack.sh pack",
+      "failure_hints": [
+        "Envie o .zip ao desenvolvedor — não escreva relatório manual",
+        "MANIFEST.json não deve ter red_flags críticos"
+      ]
+    }
+  }
+}

@@ -2,8 +2,41 @@
 
 Plugin Hermes para **bots conversarem entre si no Telegram** — histórico compartilhado, outbox, Kanban, mention relay (`@colega`) e visibilidade no grupo.
 
-**Versão:** 0.5.1 *(pré-release — v1.0 após validação em produção)*  
+**Versão:** 0.5.2 *(pré-release — v1.0 após validação em produção)*  
 **Requisitos:** [Hermes Agent](https://github.com/NousResearch/hermes-agent) v0.13+ · Python 3.11+ · stdlib only
+
+---
+
+## Onboarding guiado
+
+Instalação passo a passo **numerada** (etapas 1–10) com **validação automática** em cada gate. O agente Hermes ou um operador segue a etapa atual; **não avança** até o verificador dar OK (outbox, audit, Kanban, config).
+
+**Como iniciar:**
+
+```bash
+git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git ~/hermes-crossbot-telegram
+cd ~/hermes-crossbot-telegram
+./scripts/crossbot-onboarding.sh start
+./scripts/crossbot-onboarding.sh current
+./scripts/crossbot-onboarding.sh verify --watch 120
+./scripts/crossbot-onboarding.sh advance   # só após verify OK
+```
+
+Doc completa: [docs/onboarding/00-onboarding-guiado.md](./docs/onboarding/00-onboarding-guiado.md)
+
+**Se travar numa etapa:**
+
+| Situação | O que fazer |
+|----------|-------------|
+| Não sabe em qual etapa está | `./scripts/crossbot-onboarding.sh status` |
+| Etapa não passa no verify | `./scripts/crossbot-onboarding.sh current` — ler `failure_hints`; **não pule** |
+| Precisa enviar evidência ao dev | `./scripts/crossbot-debug-pack.sh pack` (ou `-r ROUND`) |
+| Worker Kanban / benchmark parado | Aguardar até **180s**; verificar task `blocked` |
+| Quer recomeçar | `./scripts/crossbot-onboarding.sh reset` |
+
+**Não faça:** avançar sem `verify` OK; pedir relatório manual em vez do debug-pack; rodar `crossbot_cli` no worker Kanban (terminal costuma ser bloqueado).
+
+Sintoma → etapa: [debug-crossbot.md](./docs/reference/debug-crossbot.md)
 
 ---
 
@@ -14,11 +47,13 @@ Mande isso no chat do bot que tem terminal (não precisa explicar técnico):
 ```
 Preciso que você instale o crossbot aqui no servidor — é o plugin que faz os bots conversarem entre si no Telegram.
 
-Baixe o projeto do GitHub (franklinbravos/hermes-crossbot-telegram), rode a instalação completa e não pare no meio. Se já existia a versão antiga (kanban-context ou multi-agent-context), limpe isso e deixe só o crossbot.
+Baixe o projeto do GitHub (franklinbravos/hermes-crossbot-telegram), rode a instalação completa e execute o onboarding guiado até a etapa 10. Não declare sucesso até crossbot-onboarding.sh status mostrar todas as etapas passed.
+
+Se já existia a versão antiga (kanban-context ou multi-agent-context), limpe isso e deixe só o crossbot.
 
 No final me diga se deu certo, quais bots foram configurados e se o gateway reiniciou.
 
-bash -c 'set -euo pipefail; CB="${CROSSBOT_HOME:-$HOME/hermes-crossbot-telegram}"; if [ -d "$CB/.git" ]; then git -C "$CB" pull --ff-only; else git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git "$CB"; fi; chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh; "$CB"/scripts/bootstrap.sh --yes'
+bash -c 'set -euo pipefail; CB="${CROSSBOT_HOME:-$HOME/hermes-crossbot-telegram}"; if [ -d "$CB/.git" ]; then git -C "$CB" pull --ff-only; else git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git "$CB"; fi; chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh; "$CB"/scripts/bootstrap.sh --yes --onboarding'
 ```
 
 Mais mensagens prontas (atualizar, teste, auto-update): [HERMES-INSTALL-PROMPT.md](./docs/onboarding/HERMES-INSTALL-PROMPT.md)
@@ -93,6 +128,7 @@ Incorpora **kanban-context** (Franklin Bravos) e **multi-agent-context** (Kaishi
 | `telefone-sem-fio.sh` | Benchmark tema telefone (+2 palavras) |
 | `benchmark-report.sh` | Tempo total e % sucesso |
 | `crossbot-debug-pack.sh` | Modo debug — zip factual para enviar ao dev |
+| `crossbot-onboarding.sh` | **Onboarding guiado** — etapas 1–10 com gates |
 
 ---
 
@@ -100,6 +136,7 @@ Incorpora **kanban-context** (Franklin Bravos) e **multi-agent-context** (Kaishi
 
 | Guia | Link |
 |------|------|
+| **Onboarding guiado (1–10)** | [00-onboarding-guiado.md](./docs/onboarding/00-onboarding-guiado.md) |
 | Instalação (copiar pro Hermes) | [HERMES-INSTALL-PROMPT.md](./docs/onboarding/HERMES-INSTALL-PROMPT.md) |
 | Instalar e adaptar | [02-instalar-e-adaptar.md](./docs/onboarding/02-instalar-e-adaptar.md) |
 | Workspace e colegas | [03-workspace-e-colegas.md](./docs/onboarding/03-workspace-e-colegas.md) |

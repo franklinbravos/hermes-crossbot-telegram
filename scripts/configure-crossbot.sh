@@ -294,7 +294,7 @@ for name in "$ORCH" "${PLAYER_LIST[@]}"; do
 done
 
 echo ""
-echo "Próximo passo:"
-echo "  ./scripts/fui-ao-mercado.sh"
-echo "  ./scripts/benchmark-report.sh"
-echo "  (orchestrator detectado automaticamente se rodar no contexto do profile ${ORCH})"
+echo "Próximo passo (onboarding):"
+echo "  ./scripts/crossbot-onboarding.sh verify --step 3a"
+echo "  ./scripts/setup-crossbot-board.sh"
+echo "  docs/onboarding/00-onboarding-guiado.md"

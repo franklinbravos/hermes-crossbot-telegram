@@ -93,6 +93,23 @@ def _read_json(path: Path) -> Optional[Any]:
         return None
 
 
+def _plugin_hooks(root: Path) -> List[str]:
+    text = (_plugin_dir(root) / "plugin.yaml").read_text(encoding="utf-8", errors="replace")
+    hooks: List[str] = []
+    in_hooks = False
+    for line in text.splitlines():
+        if line.strip().startswith("hooks:"):
+            in_hooks = True
+            continue
+        if in_hooks:
+            m = re.match(r"\s*-\s*(\S+)", line)
+            if m:
+                hooks.append(m.group(1))
+            elif line.strip() and not line.startswith(" "):
+                break
+    return hooks
+
+
 def _plugin_version(root: Path) -> str:
     data = _read_json(_plugin_dir(root) / "plugin.yaml")
     if isinstance(data, dict):
@@ -115,13 +132,13 @@ def _sqlite_query(db: Path, sql: str, params: Sequence[Any] = ()) -> List[Dict[s
         return []
 
 
-def _filter_audit_lines(lines: List[str], round_id: Optional[str]) -> List[str]:
+def _filter_audit_lines(lines: List[str], round_id: Optional[str], outbox_rows: Optional[List[Dict[str, Any]]] = None) -> List[str]:
     if not round_id:
         return lines
-    kept = []
+    text_kept = set()
     for line in lines:
         if round_id in line:
-            kept.append(line)
+            text_kept.add(line)
             continue
         for tag in (
             f"round={round_id}",
@@ -129,9 +146,27 @@ def _filter_audit_lines(lines: List[str], round_id: Optional[str]) -> List[str]:
             f'"round": "{round_id}"',
         ):
             if tag in line:
-                kept.append(line)
+                text_kept.add(line)
                 break
-    return kept
+
+    outbox_ids: set = set()
+    if outbox_rows:
+        for row in outbox_rows:
+            oid = row.get("id")
+            if oid is not None:
+                outbox_ids.add(int(oid))
+
+    if outbox_ids:
+        for line in lines:
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            oid = ev.get("outbox_id")
+            if oid is not None and int(oid) in outbox_ids:
+                text_kept.add(line)
+
+    return [ln for ln in lines if ln in text_kept]
 
 
 def _outbox_for_round(outbox_rows: List[Dict[str, Any]], round_id: Optional[str]) -> List[Dict[str, Any]]:
@@ -146,13 +181,21 @@ def _outbox_for_round(outbox_rows: List[Dict[str, Any]], round_id: Optional[str]
     return out
 
 
+def _onboarding_state(root: Path) -> Optional[Dict[str, Any]]:
+    path = root / "data" / "crossbot-onboarding.json"
+    return _read_json(path) if path.is_file() else None
+
+
 def _diagnose(
     *,
     round_id: Optional[str],
     outbox: List[Dict[str, Any]],
     audit_events: List[Dict[str, Any]],
     kanban_tasks: List[Dict[str, Any]],
+    kanban_events: List[Dict[str, Any]],
     plugin_version: str,
+    plugin_hooks: List[str],
+    topic_map: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     pending = [r for r in outbox if r.get("status") == "pending"]
     done = [r for r in outbox if r.get("status") == "done"]
@@ -162,17 +205,78 @@ def _diagnose(
         flags.append("OUTBOX_ALL_PENDING")
     if pending and done:
         flags.append("OUTBOX_PARTIAL")
+    if len(pending) > 1 and round_id:
+        flags.append("STALE_PENDING_OUTBOX")
     if not any(e.get("event") == "crossbot_respond" for e in audit_events):
         if outbox:
             flags.append("NO_CROSSBOT_RESPOND_IN_AUDIT")
     if not any(e.get("event") == "benchmark_relay" for e in audit_events):
         if round_id and len(outbox) == 1 and pending:
             flags.append("BENCHMARK_CHAIN_NOT_RELAYED")
-    if any(e.get("event") == "visibility_post" and not e.get("ok") for e in audit_events):
-        flags.append("VISIBILITY_POST_FAILED")
+    for ev in audit_events:
+        if ev.get("event") == "visibility_post" and not ev.get("ok"):
+            flags.append("VISIBILITY_POST_FAILED")
+        if ev.get("event") == "visibility_post":
+            cid = str(ev.get("chat_id") or "")
+            if "X" in cid.upper() or "not found" in str(ev.get("error") or "").lower():
+                flags.append("VISIBILITY_CHAT_PLACEHOLDER")
     complete = any("status: COMPLETE" in str(r.get("body") or "") for r in outbox)
     if round_id and done and not complete and len(outbox) >= 1:
         flags.append("BENCHMARK_NOT_COMPLETE")
+
+    if "post_tool_call" not in plugin_hooks:
+        flags.append("MISSING_POST_TOOL_CALL_HOOK")
+
+    topics = (topic_map or {}).get("topics") or {}
+    chat_id = str((topic_map or {}).get("chat_id") or "")
+    for ev in audit_events:
+        if ev.get("event") != "visibility_post" or not ev.get("ok"):
+            continue
+        to_bot = None
+        oid = ev.get("outbox_id")
+        for row in outbox:
+            if row.get("id") == oid:
+                to_bot = row.get("to_bot")
+                break
+        if chat_id and str(ev.get("chat_id")) != chat_id:
+            flags.append("CHAT_ID_MISMATCH")
+        if to_bot and to_bot in topics:
+            expected = topics.get(to_bot)
+            if expected is not None and int(ev.get("thread_id") or 0) != int(expected):
+                flags.append("THREAD_ID_MISMATCH")
+
+    for t in kanban_tasks:
+        if t.get("status") == "blocked":
+            flags.append("KANBAN_TASK_BLOCKED")
+            for ev in kanban_events:
+                if ev.get("task_id") != t.get("id"):
+                    continue
+                payload = str(ev.get("payload") or "")
+                if "Security scan" in payload or "pending_approval" in payload:
+                    flags.append("WORKER_TERMINAL_BLOCKED")
+                    break
+        body = str(t.get("body_preview") or t.get("body") or "")
+        if "crossbot_cli" in body and "OBRIGATÓRIO" in body:
+            flags.append("WORKER_INSTRUCTIONS_REQUIRE_CLI")
+
+    for row in outbox:
+        if row.get("status") != "pending":
+            continue
+        tid = row.get("kanban_task_id")
+        if not tid:
+            continue
+        for t in kanban_tasks:
+            if t.get("id") == tid and t.get("status") == "done":
+                flags.append("KANBAN_DONE_OUTBOX_PENDING")
+                break
+
+    # dedupe preserving order
+    seen: set = set()
+    unique_flags: List[str] = []
+    for f in flags:
+        if f not in seen:
+            seen.add(f)
+            unique_flags.append(f)
 
     return {
         "round": round_id,
@@ -183,7 +287,7 @@ def _diagnose(
         "audit_events": len(audit_events),
         "kanban_tasks": len(kanban_tasks),
         "benchmark_complete_seen": complete,
-        "red_flags": flags,
+        "red_flags": unique_flags,
     }
 
 
@@ -387,7 +491,7 @@ def cmd_pack(args: argparse.Namespace) -> int:
     audit_lines: List[str] = []
     if audit_path.is_file():
         audit_lines = audit_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    audit_filtered = _filter_audit_lines(audit_lines, round_id)
+    audit_filtered = _filter_audit_lines(audit_lines, round_id, outbox)
     audit_events: List[Dict[str, Any]] = []
     for line in audit_filtered:
         try:
@@ -395,12 +499,20 @@ def cmd_pack(args: argparse.Namespace) -> int:
         except json.JSONDecodeError:
             pass
 
+    topic_map = _read_json(_plugin_dir(root) / "topic-map.json")
+    if not isinstance(topic_map, dict):
+        topic_map = {}
+    onboarding = _onboarding_state(root)
+
     diag = _diagnose(
         round_id=round_id,
         outbox=outbox,
         audit_events=audit_events,
         kanban_tasks=kanban_tasks,
+        kanban_events=kanban_events,
         plugin_version=plugin_ver,
+        plugin_hooks=_plugin_hooks(root),
+        topic_map=topic_map,
     )
 
     (out_dir / "audit").mkdir(exist_ok=True)
@@ -474,6 +586,8 @@ def cmd_pack(args: argparse.Namespace) -> int:
         "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "hostname": socket.gethostname(),
         "round_filter": round_id,
+        "onboarding_step": (onboarding or {}).get("current_step") if onboarding and onboarding.get("active") else None,
+        "onboarding_run_id": (onboarding or {}).get("onboarding_run_id"),
         "diagnosis": diag,
         "paths": paths,
         "files": sorted(str(p.relative_to(out_dir)) for p in out_dir.rglob("*") if p.is_file()),

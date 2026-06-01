@@ -1,6 +1,6 @@
 """crossbot — Telegram mensagem bot-to-bot para Hermes Agent.
 
-Plugin unificado (v0.5.1, pré-release): histórico compartilhado + outbox + Kanban dispatch +
+Plugin unificado (v0.5.2, pré-release): histórico compartilhado + outbox + Kanban dispatch +
 mention relay + visibilidade Telegram.
 
 Origem dos módulos incorporados:
@@ -522,19 +522,21 @@ def _format_worker_crossbot_instruction(
         return (
             f"INSTRUCTION TO WORKER (outbox #{outbox_id}) — BENCHMARK CHAIN:\n"
             f"1. Siga o bloco BENCHMARK_CHAIN / SEU PAPEL acima (repetir + incrementar).\n"
-            f"2. OBRIGATÓRIO — feche o outbox ANTES de kanban_complete:\n"
-            f"   python3 {cli} respond {outbox_id} \"<frase atualizada completa>\"\n"
-            f"3. O plugin repassa automaticamente ao próximo jogador da cadeia.\n"
-            f"4. kanban_complete(summary=\"...\", metadata={{\"phrase\": \"...\", \"round\": \"...\", \"hop\": N}})\n"
-            f"5. Resposta vazia ou só kanban_complete deixa outbox pending — proibido."
+            f"2. OBRIGATÓRIO — feche com a tool kanban_complete (NÃO use terminal):\n"
+            f"   kanban_complete(\n"
+            f"     summary=\"<frase atualizada completa>\",\n"
+            f"     metadata={{\"phrase\": \"<mesma frase>\", \"round\": \"...\", \"hop\": N}}\n"
+            f"   )\n"
+            f"3. O plugin crossbot fecha o outbox e repassa a cadeia automaticamente.\n"
+            f"4. NÃO rode crossbot_cli via terminal — workers Kanban costumam ter terminal bloqueado.\n"
+            f"5. NÃO use kanban_block por causa de terminal; kanban_complete basta."
         )
     return (
         f"INSTRUCTION TO WORKER (outbox #{outbox_id}):\n"
         f"1. Read the message above\n"
         f"2. Reply in your own words\n"
-        f"3. Prefer: python3 {cli} respond {outbox_id} \"your reply\"\n"
-        f"   (or include the reply text in kanban_complete summary — plugin auto-closes outbox)\n"
-        f"4. Then call kanban_complete"
+        f"3. Call kanban_complete(summary=\"your reply\") — plugin auto-closes outbox\n"
+        f"4. Do NOT use terminal/crossbot_cli unless explicitly allowed (often blocked)"
     )
 
 
@@ -2679,10 +2681,83 @@ def _handle_status_command(**kwargs) -> Optional[Dict[str, str]]:
     return {"context": status}
 
 
+def _load_onboarding():
+    import importlib.util
+    ob_path = _plugin_dir / "onboarding.py"
+    spec = importlib.util.spec_from_file_location("crossbot_onboarding", ob_path)
+    if spec is None or spec.loader is None:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_onboarding = None
+
+
+def _onboarding_module():
+    global _onboarding
+    if _onboarding is None:
+        try:
+            _onboarding = _load_onboarding()
+        except Exception as exc:
+            logger.debug("crossbot onboarding module unavailable: %s", exc)
+    return _onboarding
+
+
+def _inject_onboarding_context(**kwargs) -> Optional[Dict[str, str]]:
+    ob = _onboarding_module()
+    if not ob:
+        return None
+    try:
+        return ob.inject_onboarding_context(**kwargs)
+    except Exception as exc:
+        logger.debug("onboarding inject failed: %s", exc)
+        return None
+
+
 def register(ctx) -> None:
     # Run proactive validation
     vr = run_validation()
     vr.log()
+
+    ob = _onboarding_module()
+    if ob:
+        ctx.register_tool(
+            name="crossbot_onboarding_status",
+            handler=lambda args, **kw: ob.tool_status(**kw),
+            schema={
+                "name": "crossbot_onboarding_status",
+                "description": "Status do onboarding guiado crossbot (etapa atual, passed, evidence).",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        )
+        ctx.register_tool(
+            name="crossbot_onboarding_verify",
+            handler=lambda args, **kw: ob.tool_verify(**{**kw, **(args or {})}),
+            schema={
+                "name": "crossbot_onboarding_verify",
+                "description": "Verifica gate da etapa atual do onboarding (opcional watch_seconds).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "watch_seconds": {
+                            "type": "integer",
+                            "description": "Poll a cada 5s até este timeout (ex: 180 para step 7).",
+                        },
+                    },
+                },
+            },
+        )
+        ctx.register_tool(
+            name="crossbot_onboarding_advance",
+            handler=lambda args, **kw: ob.tool_advance(**kw),
+            schema={
+                "name": "crossbot_onboarding_advance",
+                "description": "Avança onboarding só se último verify passou.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        )
 
     ctx.register_tool(
         name="crossbot_send",
@@ -2711,8 +2786,8 @@ def register(ctx) -> None:
         schema={
             "name": "crossbot_respond",
             "description": (
-                "MANDATORY for cross-bot Kanban workers — call BEFORE kanban_complete. "
-                "Marks outbox done and posts response visibility to Telegram."
+                "Optional for workers — prefer kanban_complete(summary, metadata); "
+                "post_tool_call closes outbox automatically. Use only if terminal allowed."
             ),
             "parameters": {
                 "type": "object",
@@ -2725,6 +2800,7 @@ def register(ctx) -> None:
         },
     )
 
+    ctx.register_hook("pre_llm_call", _inject_onboarding_context)
     ctx.register_hook("pre_llm_call", _shared_history.inject_channel_context)
     ctx.register_hook("pre_llm_call", _inject_kanban_context)
     ctx.register_hook("pre_llm_call", _handle_status_command)

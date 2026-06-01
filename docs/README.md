@@ -1,6 +1,6 @@
 # Documentação — Crossbot
 
-**Repositório:** [hermes-crossbot-telegram](https://github.com/franklinbravos/hermes-crossbot-telegram) · **Plugin:** crossbot v0.5.1 *(pré-release)*
+**Repositório:** [hermes-crossbot-telegram](https://github.com/franklinbravos/hermes-crossbot-telegram) · **Plugin:** crossbot v0.5.2 *(pré-release)*
 
 Plugin Hermes para mensagem **bot-to-bot no Telegram** (outbox, Kanban, mention relay, visibilidade).
 

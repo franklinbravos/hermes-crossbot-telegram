@@ -1,21 +1,33 @@
 # Handoff — Deploy e validação cross-bot
 
+> **Redirecionamento:** use o **[onboarding guiado](./00-onboarding-guiado.md)** (etapas 1–10) em vez deste fluxo manual. Este documento permanece como referência histórica.
+
 > **Para:** agente DevOps / operador do ambiente  
-> **Versão alvo:** crossbot **0.5.1+** *(pré-release; v1.0 após validação)*
+> **Versão alvo:** crossbot **0.5.2+** *(pré-release; v1.0 após validação)*
 
-Execute este documento **do início ao fim**. Ao terminar, preencha o [template de feedback](#template-de-feedback) e envie ao operador humano.
+## Fluxo recomendado (substitui seções abaixo)
 
-**Documentação relacionada:** [02-instalar-e-adaptar.md](./02-instalar-e-adaptar.md) · [03-workspace-e-colegas.md](./03-workspace-e-colegas.md) · [05-fui-ao-mercado.md](./05-fui-ao-mercado.md)
+```bash
+cd ~/hermes-crossbot-telegram && git pull
+./scripts/bootstrap.sh --yes --onboarding
+./scripts/crossbot-onboarding.sh current
+./scripts/crossbot-onboarding.sh verify --watch 180
+./scripts/crossbot-onboarding.sh advance
+# repetir até step 10
+./scripts/crossbot-debug-pack.sh pack
+```
+
+Doc: [00-onboarding-guiado.md](./00-onboarding-guiado.md) · steps em [steps/](./steps/)
 
 ---
 
-## 1. Pull e deploy
+## 1. Pull e deploy (legado)
 
 ```bash
 cd ~/hermes-crossbot-telegram && git pull
 
 grep '^version:' ~/hermes-crossbot-telegram/plugins/crossbot/plugin.yaml
-# Esperado: 0.5.1 (pré-release)
+# Esperado: 0.5.2 (pré-release)
 
 chmod +x scripts/install.sh
 ./scripts/install.sh cross-bot
@@ -57,7 +69,7 @@ print(mod.kanban_status())
 
 Checklist:
 
-- [ ] Versão **0.5.1+** no output
+- [ ] Versão **0.5.2+** no output
 - [ ] `MULTI_AGENT_TG_DB_PATH` idêntico em todos os profiles
 - [ ] Cada profile ativo tem `TELEGRAM_BOT_TOKEN` no `.env`
 - [ ] Cada profile ativo tem `CROSSBOT_BOT_NAME` = nome do profile
@@ -70,110 +82,22 @@ Checklist:
 
 Colar o bloco de [AGENT-SYSTEM-PROMPT.md](./AGENT-SYSTEM-PROMPT.md) no SOUL/instructions de **cada** profile listado em `topic-map.json`.
 
-- [ ] Coordenador (profile que inicia *fui ao mercado*)
-- [ ] Demais profiles jogadores
+---
 
-Atualize a tabela de bots no prompt com os profiles **deste** ambiente.
+## 5. Smoke test (substituído pelo onboarding step 6–9)
+
+**Não** use `crossbot_cli` no worker Kanban — workers usam `kanban_complete`.
+
+Onboarding step 6: `./scripts/crossbot-onboarding.sh run-action`  
+Onboarding step 9: `./scripts/fui-ao-mercado.sh`
 
 ---
 
-## 5. Smoke test (cross-bot simples)
+## Template de feedback
 
-Substitua `{ORIGEM}` e `{DESTINO}` pelos profiles reais (ex: primeiro e segundo da lista):
+Use o zip de `./scripts/crossbot-debug-pack.sh pack` — não escreva relatório manual.
 
-```bash
-CROSSBOT_BOT_NAME={ORIGEM} python3 ~/.hermes/plugins/crossbot/crossbot_cli.py \
-  send {DESTINO} "Smoke test v224" "Confirme recebimento — identidade correta no Telegram"
-```
-
-**Esperado:**
-
-| # | Verificação |
-|---|-------------|
-| 1 | 📤 no Telegram com nome do bot **{ORIGEM}** |
-| 2 | Worker {DESTINO} responde via crossbot_cli |
-| 3 | 📥 no Telegram com nome do bot **{DESTINO}** (não o remetente) |
-| 4 | Outbox `status=done` |
-| 5 | Audit log sem erro Markdown |
-
-```bash
-tail -10 ~/.hermes/logs/crossbot/crossbot-audit.jsonl
-
-sqlite3 ~/.hermes/data/multi_agent_tg_shared.db \
-  "SELECT id, from_bot, to_bot, status FROM outbox ORDER BY id DESC LIMIT 3;"
-```
-
-Anote o **outbox ID** do smoke test: ___________
-
----
-
-## 6. Fui ao mercado (benchmark oficial)
-
-Leia [05-fui-ao-mercado.md](./05-fui-ao-mercado.md) antes de executar.
-
-**Chamada natural:** *"Vamos testar se os bots se falam? Joga fui ao mercado."*
-
-```bash
-./scripts/fui-ao-mercado.sh
-./scripts/benchmark-report.sh
-```
-
-Métricas:
-
-```bash
-grep FuiAoMercado ~/.hermes/logs/crossbot/crossbot-audit.jsonl | tail -20
-cat ~/.hermes/logs/crossbot/benchmark-*.json | tail -30
-```
-
----
-
-## 7. Template de feedback
-
-Copie, preencha e envie ao operador humano:
-
-```markdown
-## Handoff deploy — feedback
-
-**Data:**
-**Commit:** $(cd ~/hermes-crossbot-telegram && git log -1 --oneline)
-**Ambiente:** (descreva brevemente)
-
-### Deploy
-- [ ] git pull OK
-- [ ] plugin.yaml >= 0.5.1
-- [ ] Gateways reiniciados: (listar)
-- [ ] /kanban-status OK
-
-### Smoke test
-- Outbox ID:
-- 📤 remetente correto? (sim/não — qual bot apareceu)
-- 📥 respondedor correto? (sim/não)
-- Outbox status=done?
-
-### Telefone sem fio
-- Round ID:
-- Frase inicial:
-- Frase final:
-- Ordem dos jogadores:
-- Duração total:
-- Latência média por salto:
-- Algum bot falhou? Qual?
-- Audit log OK?
-
-### SOUL atualizado
-- [ ] (listar profiles atualizados)
-
-### Observações
-(livre)
-```
-
----
-
-## Referências rápidas
-
-| Item | Path |
-|------|------|
-| Hub docs | `docs/README.md` |
-| Debug | `docs/reference/debug-crossbot.md` |
-| Audit log | `~/.hermes/logs/crossbot/crossbot-audit.jsonl` |
-| Outbox DB | `~/.hermes/data/multi_agent_tg_shared.db` |
+- Host / profiles
+- Onboarding run_id (`crossbot-onboarding.sh status`)
+- Versão plugin
+- Zip anexo

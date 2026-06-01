@@ -1,7 +1,25 @@
 # Debug Cross-Bot — Referência técnica
 
-> **Plugin:** crossbot v0.5.1+ *(pré-release)*  
+> **Plugin:** crossbot v0.5.2+ *(pré-release)*  
 > **Para:** DevOps, Cursor, agentes que debugam sem acesso ao host.
+
+## Sintoma → etapa do onboarding
+
+| Sintoma / red_flag | Etapa |
+|--------------------|-------|
+| Plugin antigo, hook ausente | **1** |
+| LEGACY_PLUGINS_PRESENT | **2** |
+| INVALID_CHAT_ID, PROFILE_MISSING | **3a** |
+| VISIBILITY_CHAT_PLACEHOLDER, VISIBILITY_POST_FAILED | **3b** |
+| KANBAN_BOARD_MISSING | **4** |
+| CROSSBOT_BOT_NAME_MISMATCH, DB_PATH_INCONSISTENT | **5** |
+| visibility ok mas sem kanban_task | **6** |
+| WORKER_TERMINAL_BLOCKED, KANBAN_DONE_OUTBOX_PENDING, NO_CROSSBOT_RESPOND | **7** |
+| BENCHMARK_CHAIN_NOT_RELAYED | **8** |
+| BENCHMARK_INCOMPLETE | **9** |
+| Red flags no MANIFEST | **10** |
+
+Onboarding: [00-onboarding-guiado.md](../onboarding/00-onboarding-guiado.md)
 
 ## Arquitetura (v0.5 — Mention Relay, pré-release)
 
@@ -44,7 +62,9 @@ Pacote padronizado para análise remota — **não depende do relatório do agen
 
 **Conteúdo do zip:** `MANIFEST.json`, `REPORT.md`, audit JSONL, dumps outbox/kanban, `topic-map.json`, `visibility-config.json` (tokens redigidos), tail do gateway.
 
-O `REPORT.md` aplica **alertas automáticos** (`NO_CROSSBOT_RESPOND_IN_AUDIT`, `BENCHMARK_CHAIN_NOT_RELAYED`, `VISIBILITY_POST_FAILED`, etc.).
+O `REPORT.md` aplica **alertas automáticos** (`NO_CROSSBOT_RESPOND_IN_AUDIT`, `WORKER_TERMINAL_BLOCKED`, `KANBAN_DONE_OUTBOX_PENDING`, `VISIBILITY_CHAT_PLACEHOLDER`, `THREAD_ID_MISMATCH`, etc.).
+
+Filtro por round correlaciona audit via **outbox_id** (não só grep textual `round=`).
 
 Para o Hermes: *"Gera o pacote de debug do crossbot do round X"* → `pack -r X` e enviar o zip.
 
@@ -106,7 +126,10 @@ tail -20 ~/.hermes/logs/crossbot/crossbot-audit.jsonl
 
 ### 4. Worker completou Kanban mas outbox pending?
 
-Verifique se o worker rodou com `HERMES_KANBAN_TASK` setado e se havia exatamente uma outbox pending. Auto-respond exige sessão worker + outbox `pending`.
+1. Confirme plugin **>= 0.5.2** com hook `post_tool_call` em `plugin.yaml`.
+2. Worker deve chamar **`kanban_complete(summary=..., metadata={...})`** — **não** `crossbot_cli` via terminal (Tirith/security scan bloqueia workers).
+3. Se task ficou **`blocked`** com `Security scan` / `pending_approval` → step **7** do onboarding; não é bug do plugin.
+4. Verifique `HERMES_KANBAN_TASK` setado e outbox `pending` ligado ao `kanban_task_id`.
 
 ### 5. Reply falhou mas resposta apareceu?
 
@@ -116,9 +139,9 @@ Esperado entre tokens de bots diferentes. Audit deve mostrar `attempt=citation` 
 
 ```bash
 grep version ~/.hermes/plugins/crossbot/plugin.yaml
-# deve ser 0.5.1
+# deve ser 0.5.2
 grep hooks ~/.hermes/plugins/crossbot/plugin.yaml
-# deve listar pre_llm_call e post_llm_call
+# deve listar pre_llm_call, post_llm_call, post_tool_call
 ```
 
 ## Reply real — melhoria futura (Hermes core)

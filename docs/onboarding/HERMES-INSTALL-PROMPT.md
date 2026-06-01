@@ -3,6 +3,8 @@
 > Você **não precisa** explicar bash, plugins nem paths.  
 > Copie a mensagem abaixo, cole no chat do Hermes (DevOps ou quem tiver terminal) e deixe ele resolver.
 
+**Fluxo oficial:** [00-onboarding-guiado.md](./00-onboarding-guiado.md) — etapas 1–10 com gates automáticos.
+
 ---
 
 ## Instalar o crossbot (primeira vez ou vindo da versão antiga)
@@ -12,10 +14,12 @@
 ```
 Preciso que você instale o crossbot aqui no servidor — é o plugin que faz os bots conversarem entre si no Telegram.
 
-Baixe o projeto do GitHub (franklinbravos/hermes-crossbot-telegram), rode a instalação completa e não pare no meio. Se já existia a versão antiga (kanban-context ou multi-agent-context), limpe isso e deixe só o crossbot.
+Baixe o projeto do GitHub (franklinbravos/hermes-crossbot-telegram), rode a instalação completa e execute o onboarding guiado até a etapa 10. Não declare sucesso até crossbot-onboarding.sh status mostrar todas as etapas passed.
+
+Se já existia a versão antiga (kanban-context ou multi-agent-context), limpe isso e deixe só o crossbot.
 
 No final me diga:
-- se deu certo ou onde travou
+- se deu certo ou onde travou (qual step do onboarding)
 - quais bots/profiles foram configurados
 - se o gateway reiniciou
 
@@ -23,7 +27,13 @@ Se algo faltar (por exemplo chat do Telegram ou nomes dos bots), me pergunte —
 
 Comando para rodar:
 
-bash -c 'set -euo pipefail; CB="${CROSSBOT_HOME:-$HOME/hermes-crossbot-telegram}"; if [ -d "$CB/.git" ]; then git -C "$CB" pull --ff-only; else git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git "$CB"; fi; chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh; "$CB"/scripts/bootstrap.sh --yes'
+bash -c 'set -euo pipefail; CB="${CROSSBOT_HOME:-$HOME/hermes-crossbot-telegram}"; if [ -d "$CB/.git" ]; then git -C "$CB" pull --ff-only; else git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git "$CB"; fi; chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh; "$CB"/scripts/bootstrap.sh --yes --onboarding'
+
+Depois do bootstrap, siga:
+~/hermes-crossbot-telegram/scripts/crossbot-onboarding.sh current
+~/hermes-crossbot-telegram/scripts/crossbot-onboarding.sh verify --watch 180
+~/hermes-crossbot-telegram/scripts/crossbot-onboarding.sh advance
+(repetir até step 10)
 ```
 
 ---
@@ -99,5 +109,6 @@ O script `bootstrap.sh` cuida de:
 3. Instalar o crossbot em todos os profiles  
 4. Montar o mapa de colegas (`topic-map.json`)  
 5. Criar o quadro Kanban e reiniciar o Hermes  
+6. Com `--onboarding`: iniciar [onboarding guiado](./00-onboarding-guiado.md)
 
-Mais detalhes: [02-instalar-e-adaptar.md](./02-instalar-e-adaptar.md)
+Mais detalhes: [02-instalar-e-adaptar.md](./02-instalar-e-adaptar.md) · [00-onboarding-guiado.md](./00-onboarding-guiado.md)

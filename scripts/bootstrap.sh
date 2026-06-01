@@ -18,6 +18,7 @@ SKIP_RESTART=false
 SKIP_CONFIGURE=false
 SKIP_BOARD=false
 SMOKE_TEST=false
+ONBOARDING=false
 UPDATE_ONLY=false
 
 usage() {
@@ -39,6 +40,7 @@ Options:
   --skip-board          Skip setup-crossbot-board.sh
   --skip-restart        Do not restart hermes gateway
   --smoke-test          Run fui-ao-mercado benchmark after install (needs topic-map)
+  --onboarding          Start guided onboarding after install (crossbot-onboarding.sh start)
   -h, --help            Show help
 
 Examples:
@@ -60,6 +62,7 @@ while [[ $# -gt 0 ]]; do
     --skip-board) SKIP_BOARD=true; shift ;;
     --skip-restart) SKIP_RESTART=true; shift ;;
     --smoke-test) SMOKE_TEST=true; shift ;;
+    --onboarding) ONBOARDING=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -134,11 +137,19 @@ if [[ "$SMOKE_TEST" == true ]]; then
     echo "⚠ smoke test failed — check topic-map and gateways"
 fi
 
+if [[ "$ONBOARDING" == true ]]; then
+  echo "→ starting guided onboarding"
+  ./scripts/crossbot-onboarding.sh start || \
+    echo "⚠ onboarding start failed — run manually: ./scripts/crossbot-onboarding.sh start"
+  echo "  Siga: ./scripts/crossbot-onboarding.sh current && verify && advance"
+fi
+
 echo ""
 echo "✅ Crossbot bootstrap finished."
 echo ""
 echo "Next checks:"
 echo "  grep version ~/.hermes/plugins/crossbot/plugin.yaml"
+echo "  ./scripts/crossbot-onboarding.sh status   # onboarding guiado"
 echo "  tail -5 ~/.hermes/logs/crossbot/crossbot-audit.jsonl 2>/dev/null || true"
-echo "  docs/onboarding/03-workspace-e-colegas.md — mapa de colegas no SOUL"
+echo "  docs/onboarding/00-onboarding-guiado.md"
 echo ""
