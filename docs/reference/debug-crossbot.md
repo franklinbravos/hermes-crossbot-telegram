@@ -1,6 +1,6 @@
 # Debug Cross-Bot — Referência técnica
 
-> **Plugin:** crossbot v0.5.0+ *(pré-release)*  
+> **Plugin:** crossbot v0.5.1+ *(pré-release)*  
 > **Para:** DevOps, Cursor, agentes que debugam sem acesso ao host.
 
 ## Arquitetura (v0.5 — Mention Relay, pré-release)
@@ -116,7 +116,7 @@ Esperado entre tokens de bots diferentes. Audit deve mostrar `attempt=citation` 
 
 ```bash
 grep version ~/.hermes/plugins/crossbot/plugin.yaml
-# deve ser 0.5.0
+# deve ser 0.5.1
 grep hooks ~/.hermes/plugins/crossbot/plugin.yaml
 # deve listar pre_llm_call e post_llm_call
 ```
@@ -135,7 +135,7 @@ Também lê `HERMES_SESSION_LAST_SENT_MESSAGE_ID` e correlaciona via `messages.t
 
 ## Bugs conhecidos (histórico)
 
-| Bug | Status v0.5.0 |
+| Bug | Status v0.5.1 |
 |-----|---------------|
 | telegram_msg_id NULL | ✅ Mitigado (citation fallback) |
 | Telegram 400 reply cross-bot | ✅ Try reply → citation |

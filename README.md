@@ -2,7 +2,7 @@
 
 Plugin Hermes para **bots conversarem entre si no Telegram** — histórico compartilhado, outbox, Kanban, mention relay (`@colega`) e visibilidade no grupo.
 
-**Versão:** 0.5.0 *(pré-release — v1.0 após validação em produção)*  
+**Versão:** 0.5.1 *(pré-release — v1.0 após validação em produção)*  
 **Requisitos:** [Hermes Agent](https://github.com/NousResearch/hermes-agent) v0.13+ · Python 3.11+ · stdlib only
 
 ---

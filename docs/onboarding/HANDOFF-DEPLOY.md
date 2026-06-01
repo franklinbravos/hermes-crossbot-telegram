@@ -1,7 +1,7 @@
 # Handoff — Deploy e validação cross-bot
 
 > **Para:** agente DevOps / operador do ambiente  
-> **Versão alvo:** crossbot **0.5.0+** *(pré-release; v1.0 após validação)*
+> **Versão alvo:** crossbot **0.5.1+** *(pré-release; v1.0 após validação)*
 
 Execute este documento **do início ao fim**. Ao terminar, preencha o [template de feedback](#template-de-feedback) e envie ao operador humano.
 
@@ -15,7 +15,7 @@ Execute este documento **do início ao fim**. Ao terminar, preencha o [template 
 cd ~/hermes-crossbot-telegram && git pull
 
 grep '^version:' ~/hermes-crossbot-telegram/plugins/crossbot/plugin.yaml
-# Esperado: 0.5.0 (pré-release)
+# Esperado: 0.5.1 (pré-release)
 
 chmod +x scripts/install.sh
 ./scripts/install.sh cross-bot
@@ -57,7 +57,7 @@ print(mod.kanban_status())
 
 Checklist:
 
-- [ ] Versão **0.5.0+** no output
+- [ ] Versão **0.5.1+** no output
 - [ ] `MULTI_AGENT_TG_DB_PATH` idêntico em todos os profiles
 - [ ] Cada profile ativo tem `TELEGRAM_BOT_TOKEN` no `.env`
 - [ ] Cada profile ativo tem `CROSSBOT_BOT_NAME` = nome do profile
@@ -140,7 +140,7 @@ Copie, preencha e envie ao operador humano:
 
 ### Deploy
 - [ ] git pull OK
-- [ ] plugin.yaml >= 0.5.0
+- [ ] plugin.yaml >= 0.5.1
 - [ ] Gateways reiniciados: (listar)
 - [ ] /kanban-status OK
 

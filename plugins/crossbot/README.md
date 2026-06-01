@@ -2,7 +2,7 @@
 
 Plugin **unificado** para ecossistemas Hermes multi-agente no Telegram.
 
-**Versão:** 0.5.0 *(pré-release — v1.0 após validação em produção)*
+**Versão:** 0.5.1 *(pré-release — v1.0 após validação em produção)*
 
 ## O que faz
 

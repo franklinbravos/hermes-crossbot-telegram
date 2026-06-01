@@ -77,7 +77,7 @@ Para telefone-sem-fio, debug ou integrações explícitas, ainda existem:
 | **crossbot_cli.py** | Fallback CLI (sem tool no toolset do worker) |
 | **Audit log** | `~/.hermes/logs/crossbot/crossbot-audit.jsonl` |
 
-## Trade-offs (v0.5.0, pré-release)
+## Trade-offs (v0.5.1, pré-release)
 
 | Decisão | Motivo |
 |---------|--------|
