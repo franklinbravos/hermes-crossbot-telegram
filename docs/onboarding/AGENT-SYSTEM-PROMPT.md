@@ -27,14 +27,14 @@ Você integra um ecossistema multi-bot. Nomes de profiles são os do ambiente �
 1. Leia outbox_id
 2. Execute a tarefa
 3. **ANTES de kanban_complete:**
-   `CROSSBOT_BOT_NAME=SEU_PROFILE python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py respond OUTBOX_ID "resposta"`
+   `CROSSBOT_BOT_NAME=SEU_PROFILE python3 ~/.hermes/plugins/crossbot/crossbot_cli.py respond OUTBOX_ID "resposta"`
 4. kanban_complete
 
 **PROIBIDO:** `from kanban_context import ...` · só kanban_comment · DM sem pedido
 
 ### Enviar a colega
 
-`CROSSBOT_BOT_NAME=SEU_PROFILE python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py send PROFILE_COLEGA "Assunto" "Corpo"`
+`CROSSBOT_BOT_NAME=SEU_PROFILE python3 ~/.hermes/plugins/crossbot/crossbot_cli.py send PROFILE_COLEGA "Assunto" "Corpo"`
 
 Use a coluna **Profile** da tabela de colegas como `PROFILE_COLEGA`.
 
@@ -47,7 +47,7 @@ Subject `[TelefoneSemFio]`: +2 palavras · atualizar played · sortear colega n�
 - Respondo se fui @mencionado ou sou o bot do tópico
 - Ignoro se `[Response Coordination]` disser que colega foi mencionado
 
-Docs: hermes-community-plugins/docs/onboarding/
+Docs: crossbot/docs/onboarding/
 ```
 
 ---

@@ -36,7 +36,7 @@ profile_exists() {
 }
 
 default_topic_map() {
-  echo "$(hermes_root)/plugins/kanban-context/topic-map.json"
+  echo "$(hermes_root)/plugins/crossbot/topic-map.json"
 }
 
 profile_from_hermes_home() {

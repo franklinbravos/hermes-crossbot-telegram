@@ -4,19 +4,18 @@
 Hermes kanban workers use _HERMES_CORE_TOOLS only — plugin tools are not
 inherited. Workers should call this script via the terminal tool:
 
-  python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py respond 55 "Your reply"
+  python3 ~/.hermes/plugins/crossbot/crossbot_cli.py respond 55 "Your reply"
 """
 from __future__ import annotations
 
 import importlib.util
-import os
 import sys
 from pathlib import Path
 
 
 def _load_plugin():
     init_path = Path(__file__).resolve().parent / "__init__.py"
-    spec = importlib.util.spec_from_file_location("kanban_context_plugin", init_path)
+    spec = importlib.util.spec_from_file_location("crossbot_plugin", init_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Cannot load plugin from {init_path}")
     mod = importlib.util.module_from_spec(spec)

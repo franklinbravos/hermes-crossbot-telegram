@@ -1,7 +1,7 @@
 # Handoff — Deploy e validação cross-bot
 
 > **Para:** agente DevOps / operador do ambiente  
-> **Versão alvo:** kanban-context **2.3.0+**
+> **Versão alvo:** crossbot **0.5.0+** *(pré-release; v1.0 após validação)*
 
 Execute este documento **do início ao fim**. Ao terminar, preencha o [template de feedback](#template-de-feedback) e envie ao operador humano.
 
@@ -12,10 +12,10 @@ Execute este documento **do início ao fim**. Ao terminar, preencha o [template 
 ## 1. Pull e deploy
 
 ```bash
-cd ~/hermes-community-plugins && git pull
+cd ~/crossbot && git pull
 
-grep '^version:' ~/hermes-community-plugins/plugins/kanban-context/plugin.yaml
-# Esperado: 2.3.0 ou superior
+grep '^version:' ~/crossbot/plugins/crossbot/plugin.yaml
+# Esperado: 0.5.0 (pré-release)
 
 chmod +x scripts/install.sh
 ./scripts/install.sh cross-bot
@@ -48,7 +48,7 @@ ls ~/.hermes/profiles/
 python3 -c "
 import importlib.util, os
 spec = importlib.util.spec_from_file_location(
-    'kc', os.path.expanduser('~/.hermes/plugins/kanban-context/__init__.py'))
+    'kc', os.path.expanduser('~/.hermes/plugins/crossbot/__init__.py'))
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 print(mod.kanban_status())
@@ -57,7 +57,7 @@ print(mod.kanban_status())
 
 Checklist:
 
-- [ ] Versão **2.3.0+** no output
+- [ ] Versão **0.5.0+** no output
 - [ ] `MULTI_AGENT_TG_DB_PATH` idêntico em todos os profiles
 - [ ] Cada profile ativo tem `TELEGRAM_BOT_TOKEN` no `.env`
 - [ ] Cada profile ativo tem `CROSSBOT_BOT_NAME` = nome do profile
@@ -82,7 +82,7 @@ Atualize a tabela de bots no prompt com os profiles **deste** ambiente.
 Substitua `{ORIGEM}` e `{DESTINO}` pelos profiles reais (ex: primeiro e segundo da lista):
 
 ```bash
-CROSSBOT_BOT_NAME={ORIGEM} python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py \
+CROSSBOT_BOT_NAME={ORIGEM} python3 ~/.hermes/plugins/crossbot/crossbot_cli.py \
   send {DESTINO} "Smoke test v224" "Confirme recebimento — identidade correta no Telegram"
 ```
 
@@ -97,7 +97,7 @@ CROSSBOT_BOT_NAME={ORIGEM} python3 ~/.hermes/plugins/kanban-context/crossbot_cli
 | 5 | Audit log sem erro Markdown |
 
 ```bash
-tail -10 ~/.hermes/logs/kanban-context/crossbot-audit.jsonl
+tail -10 ~/.hermes/logs/crossbot/crossbot-audit.jsonl
 
 sqlite3 ~/.hermes/data/multi_agent_tg_shared.db \
   "SELECT id, from_bot, to_bot, status FROM outbox ORDER BY id DESC LIMIT 3;"
@@ -149,7 +149,7 @@ Quando receber `status: COMPLETE`, monte o relatório usando o [template de feed
 Métricas:
 
 ```bash
-grep TelefoneSemFio ~/.hermes/logs/kanban-context/crossbot-audit.jsonl | tail -20
+grep TelefoneSemFio ~/.hermes/logs/crossbot/crossbot-audit.jsonl | tail -20
 ```
 
 ---
@@ -162,12 +162,12 @@ Copie, preencha e envie ao operador humano:
 ## Handoff deploy — feedback
 
 **Data:**
-**Commit:** $(cd ~/hermes-community-plugins && git log -1 --oneline)
+**Commit:** $(cd ~/crossbot && git log -1 --oneline)
 **Ambiente:** (descreva brevemente)
 
 ### Deploy
 - [ ] git pull OK
-- [ ] plugin.yaml >= 2.3.0
+- [ ] plugin.yaml >= 0.5.0
 - [ ] Gateways reiniciados: (listar)
 - [ ] /kanban-status OK
 
@@ -202,5 +202,5 @@ Copie, preencha e envie ao operador humano:
 |------|------|
 | Hub docs | `docs/README.md` |
 | Debug | `docs/reference/debug-crossbot.md` |
-| Audit log | `~/.hermes/logs/kanban-context/crossbot-audit.jsonl` |
+| Audit log | `~/.hermes/logs/crossbot/crossbot-audit.jsonl` |
 | Outbox DB | `~/.hermes/data/multi_agent_tg_shared.db` |

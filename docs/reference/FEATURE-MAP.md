@@ -1,77 +1,46 @@
-# Feature Map
+# Feature Map — Crossbot
 
-> Index of user-facing features and code paths. Paths relative to repository root.
+> Plugin unificado: `plugins/crossbot/` (v0.5+, pré-release)  
+> Origem: `kanban-context` (Franklin Bravos) + `multi-agent-context` (Kaishi)
 
-## Async background delegation
+## Histórico compartilhado Telegram
 
-**Plugin:** `plugins/async-delegate/__init__.py`
+**Módulo:** `plugins/crossbot/shared_history.py`
 
-1. `register()` — exposes `delegate_async` tool
-2. `delegate_async_tool()` — writes task files, spawns `hermes chat`
-3. `_watcher_loop()` — detects `.done`, calls `_inject_task_notification()`
-4. `_inject_task_notification()` — queue/steer or `pre_llm_inject_results` fallback
+- `post_llm_call` persiste turnos no SQLite WAL
+- `pre_llm_call` injeta `[Recent Group History]`
 
----
+## Histórico Discord (opcional)
 
-## Shared multi-agent channel context (Discord)
+**Módulo:** `plugins/crossbot/shared_history.py`
 
-**Plugin:** `plugins/multi-agent-context/__init__.py`
+- REST via stdlib `urllib` (sem pip)
+- Requer `DISCORD_BOT_TOKEN`
 
-1. `pre_llm_call` → `_inject_channel_context()`
-2. `_resolve_target()` — thread/chat IDs from session context
-3. `_discord_get()` + `_format_discord_messages()`
-4. Returns `{"context": ...}` to Hermes core
+## Outbox bot-to-bot
 
----
+**Módulo:** `plugins/crossbot/__init__.py`
 
-## Shared multi-agent group context (Telegram)
+- Tabela `outbox` no DB compartilhado
+- Tools `crossbot_send` / `crossbot_respond`
 
-**Plugin:** `plugins/multi-agent-context/__init__.py`
+## Mention relay
 
-1. `post_llm_call` → `_record_telegram_turn()` → `_tg_write()`
-2. Next `pre_llm_call` → `_tg_read()`
-3. Formatted `[Recent Group History]`
+**Módulo:** `plugins/crossbot/__init__.py`
 
----
+- `post_llm_call`: `@mention` na resposta → outbox + Kanban task
+- Auto-resposta do worker Kanban
 
-## Kanban activity awareness
+## CLI fallback
 
-**Plugin:** `plugins/kanban-context/__init__.py`
+**Arquivo:** `plugins/crossbot/crossbot_cli.py`
 
-1. `pre_llm_call` → `_inject_kanban_context()` → `_read_kanban_events()`
-2. `_iter_boards()` — default + named boards
-3. SQL on `task_events` / `tasks` → `[Recent Kanban Activity]`
+- Workers sem toolset de plugin
 
----
+## Kanban activity + coordenação
 
-## Cross-bot messaging (Telegram)
+**Módulo:** `plugins/crossbot/__init__.py`
 
-**Plugin:** `plugins/kanban-context/__init__.py`
-
-1. `crossbot_send()` — INSERT outbox, optional Kanban task
-2. Target `pre_llm_call` → `[Pending Messages]`
-3. `crossbot_respond()` or `crossbot_cli.py` — UPDATE outbox + visibility post
-
----
-
-## Cross-bot CLI (workers)
-
-**Plugin:** `plugins/kanban-context/crossbot_cli.py`
-
-Workers without plugin tools call CLI via terminal before `kanban_complete`.
-
----
-
-## Plugin status dashboard
-
-**Plugin:** `plugins/kanban-context/__init__.py`
-
-1. `/kanban-status` detected in `pre_llm_call`
-2. `kanban_status()` — version, boards, outbox, validation
-
----
-
-## Telefone sem fio (test protocol)
-
-**Docs:** `docs/onboarding/05-telefone-sem-fio.md`  
-Uses standard cross-bot flow with `[TelefoneSemFio]` subject contract.
+- `[Recent Kanban Activity]`
+- `[Response Coordination]` por tópico
+- `/kanban-status`

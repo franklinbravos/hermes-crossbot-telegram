@@ -11,7 +11,7 @@
 | **`topic-map.json`** — profile → tópico + @handle | Modelo LLM específico |
 | **`CROSSBOT_BOT_NAME`** = nome da pasta do profile | Quantidade fixa de agentes |
 | **Agentes conhecem os colegas** — profile, @, tópico, função | Recriar gateways ou profiles |
-| **`MULTI_AGENT_TG_DB_PATH`** único para todos | |
+| **`CROSSBOT_DB_PATH`** (ou alias `MULTI_AGENT_TG_DB_PATH`) único para todos | |
 
 O cross-bot endereça agentes pelo **nome do profile Hermes** (pasta em `~/.hermes/profiles/`). Use os nomes que **já existem** no seu ambiente.
 
@@ -47,32 +47,24 @@ Preencha esta tabela (copie para seu runbook):
 
 **Regra:** a coluna **Profile** vira a chave em `topic-map.json` e o valor de `CROSSBOT_BOT_NAME` no `.env` desse profile.
 
-### A2. Instalar plugins (sem criar agentes)
+### A2. Instalar (recomendado)
+
+**Jeito mais fácil:** mande o Hermes fazer — [HERMES-INSTALL-PROMPT.md](./HERMES-INSTALL-PROMPT.md) (mensagem pronta para copiar).
+
+**Ou no terminal:**
 
 ```bash
-git clone https://github.com/franklinbravos/hermes-community-plugins.git
-cd hermes-community-plugins
-chmod +x scripts/install.sh
-./scripts/install.sh
+git clone https://github.com/franklinbravos/crossbot.git ~/crossbot
+cd ~/crossbot
+./scripts/bootstrap.sh --yes
 ```
 
-Habilite nos `config.yaml` **de cada profile existente**:
+Isso instala tudo de uma vez: remove versão antiga se existir, configura os bots, monta o mapa de tópicos, cria o quadro Kanban e reinicia o gateway.
 
-```yaml
-plugins:
-  enabled:
-    - multi-agent-context
-    - kanban-context
-```
-
-Symlink (substitua pelos profiles **reais** do inventário):
+**Atualização automática todo dia:**
 
 ```bash
-for bot in $(ls ~/.hermes/profiles/); do
-  mkdir -p ~/.hermes/profiles/${bot}/plugins
-  ln -sf ~/.hermes/plugins/kanban-context ~/.hermes/profiles/${bot}/plugins/kanban-context
-  ln -sf ~/.hermes/plugins/multi-agent-context ~/.hermes/profiles/${bot}/plugins/multi-agent-context
-done
+./scripts/setup-auto-update-cron.sh
 ```
 
 ### A3. Unificar banco compartilhado
@@ -80,7 +72,8 @@ done
 Em **cada** profile `.env` (mesmo valor):
 
 ```bash
-MULTI_AGENT_TG_DB_PATH=~/.hermes/data/multi_agent_tg_shared.db
+CROSSBOT_DB_PATH=~/.hermes/data/crossbot.db
+# alias legado (opcional): MULTI_AGENT_TG_DB_PATH=~/.hermes/data/multi_agent_tg_shared.db
 CROSSBOT_BOT_NAME=<nome-exato-da-pasta-do-profile>
 TELEGRAM_BOT_TOKEN=<token-deste-bot>
 ```
@@ -122,7 +115,7 @@ Modo não-interativo (CI / repeat):
   --yes
 ```
 
-**Manual** — edite `~/.hermes/plugins/kanban-context/topic-map.json`:
+**Manual** — edite `~/.hermes/plugins/crossbot/topic-map.json`:
 
 ```json
 {
@@ -176,7 +169,7 @@ hermes gateway restart
 
 ```bash
 # Smoke test — use dois profiles REAIS do inventário
-CROSSBOT_BOT_NAME=<profile-a> python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py \
+CROSSBOT_BOT_NAME=<profile-a> python3 ~/.hermes/plugins/crossbot/crossbot_cli.py \
   send <profile-b> "Smoke test" "Confirme recebimento"
 
 # Benchmark completo (orchestrator = bot que roda o script, detectado automaticamente)

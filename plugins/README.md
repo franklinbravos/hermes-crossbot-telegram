@@ -2,24 +2,26 @@
 
 Pacotes instaláveis para [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 
+Repositório: **[crossbot](https://github.com/franklinbravos/crossbot)**
+
 ## Instalação rápida
 
 ```bash
-git clone https://github.com/franklinbravos/hermes-community-plugins.git
-cd hermes-community-plugins
+git clone https://github.com/franklinbravos/crossbot.git
+cd crossbot
 chmod +x scripts/install.sh
-./scripts/install.sh              # stack cross-bot (recomendado)
-./scripts/install.sh all          # todos os plugins
+./scripts/install.sh              # crossbot (recomendado)
+./scripts/install.sh all          # crossbot + async-delegate
 ./scripts/install.sh async-delegate   # um plugin
 ```
 
-Destino padrão: `~/.hermes/plugins/`
+Destino: `~/.hermes/plugins/`
 
 ## Bundles
 
-| Bundle | Plugins | Quando usar |
-|--------|---------|-------------|
-| **cross-bot** | `multi-agent-context` + `kanban-context` | Bots conversando entre si no Telegram |
+| Bundle | Plugin | Quando usar |
+|--------|--------|-------------|
+| **cross-bot** | `crossbot` | Bots conversando entre si no Telegram |
 | **async-delegate** | `async-delegate` | Tarefas em background (opcional) |
 
 ## Habilitar no Hermes
@@ -28,8 +30,7 @@ Destino padrão: `~/.hermes/plugins/`
 # config.yaml de cada profile
 plugins:
   enabled:
-    - multi-agent-context
-    - kanban-context
+    - crossbot
 ```
 
 Setup: [../docs/onboarding/02-instalar-e-adaptar.md](../docs/onboarding/02-instalar-e-adaptar.md)
@@ -38,8 +39,7 @@ Setup: [../docs/onboarding/02-instalar-e-adaptar.md](../docs/onboarding/02-insta
 
 | Plugin | Versão |
 |--------|--------|
-| kanban-context | 2.3.0 |
-| multi-agent-context | 2.0.0 |
+| crossbot | 0.5.0 |
 | async-delegate | 1.1.0 |
 
-Repositório: ver [VERSION](../VERSION) na raiz.
+**Nota:** `crossbot` v0.5 unifica `kanban-context` + `multi-agent-context`. v1.0 = milestone pós-testes. Ver [crossbot/ATTRIBUTION.md](./crossbot/ATTRIBUTION.md).

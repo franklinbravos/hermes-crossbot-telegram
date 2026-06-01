@@ -9,15 +9,15 @@ source "${REPO_ROOT}/scripts/lib/resolve-python.sh"
 # shellcheck source=lib/crossbot-env.sh
 source "${REPO_ROOT}/scripts/lib/crossbot-env.sh"
 PYTHON="$(resolve_hermes_python)"
-CLI="${CROSSBOT_CLI:-${HOME}/.hermes/plugins/kanban-context/crossbot_cli.py}"
-TOPIC_MAP="${TOPIC_MAP:-${HOME}/.hermes/plugins/kanban-context/topic-map.json}"
+CLI="${CROSSBOT_CLI:-${HOME}/.hermes/plugins/crossbot/crossbot_cli.py}"
+TOPIC_MAP="${TOPIC_MAP:-${HOME}/.hermes/plugins/crossbot/topic-map.json}"
 PHRASE="${PHRASE:-O rato roeu}"
 
 if [[ ! -f "$CLI" ]]; then
-  CLI="${REPO_ROOT}/plugins/kanban-context/crossbot_cli.py"
+  CLI="${REPO_ROOT}/plugins/crossbot/crossbot_cli.py"
 fi
 if [[ ! -f "$TOPIC_MAP" ]]; then
-  TOPIC_MAP="${REPO_ROOT}/plugins/kanban-context/topic-map.json"
+  TOPIC_MAP="${REPO_ROOT}/plugins/crossbot/topic-map.json"
 fi
 if [[ ! -f "$CLI" ]]; then
   echo "Error: crossbot_cli.py not found" >&2
@@ -76,5 +76,5 @@ CROSSBOT_BOT_NAME="${ORCHESTRATOR}" "$PYTHON" "$CLI" \
 
 echo ""
 echo "Rodada iniciada. Acompanhe:"
-echo "  tail -f ~/.hermes/logs/kanban-context/crossbot-audit.jsonl | grep TelefoneSemFio"
+echo "  tail -f ~/.hermes/logs/crossbot/crossbot-audit.jsonl | grep TelefoneSemFio"
 echo "Docs: docs/onboarding/05-telefone-sem-fio.md"

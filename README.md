@@ -1,85 +1,121 @@
-# Hermes Community Plugins 🎭
+# Crossbot — Telegram mensagem bot-to-bot para Hermes
 
-Battle-tested plugins for [Hermes Agent](https://github.com/NousResearch/hermes-agent) — **zero core patches required**.
+Plugin Hermes para **bots conversarem entre si no Telegram** — histórico compartilhado, outbox, Kanban, mention relay (`@colega`) e visibilidade no grupo.
 
-**Versão do repositório:** 2.3.0 · **Cross-bot:** kanban-context 2.3.0
+**Versão:** 0.5.0 *(pré-release — v1.0 após validação em produção)*  
+**Requisitos:** [Hermes Agent](https://github.com/NousResearch/hermes-agent) v0.13+ · Python 3.11+ · stdlib only
 
-## Instalação (1 comando)
+---
+
+## Para o Hermes — copie e cole
+
+Mande isso no chat do bot que tem terminal (não precisa explicar técnico):
+
+```
+Preciso que você instale o crossbot aqui no servidor — é o plugin que faz os bots conversarem entre si no Telegram.
+
+Baixe o projeto do GitHub (franklinbravos/crossbot), rode a instalação completa e não pare no meio. Se já existia a versão antiga (kanban-context ou multi-agent-context), limpe isso e deixe só o crossbot.
+
+No final me diga se deu certo, quais bots foram configurados e se o gateway reiniciou.
+
+bash -c 'set -euo pipefail; CB="${CROSSBOT_HOME:-$HOME/crossbot}"; if [ -d "$CB/.git" ]; then git -C "$CB" pull --ff-only; else git clone https://github.com/franklinbravos/crossbot.git "$CB"; fi; chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh; "$CB"/scripts/bootstrap.sh --yes'
+```
+
+Mais mensagens prontas (atualizar, teste, auto-update): [HERMES-INSTALL-PROMPT.md](./docs/onboarding/HERMES-INSTALL-PROMPT.md)
+
+---
+
+## Instalação manual (terminal)
 
 ```bash
-git clone https://github.com/franklinbravos/hermes-community-plugins.git
-cd hermes-community-plugins
-./scripts/install.sh          # stack cross-bot (recomendado)
-# ./scripts/install.sh all    # todos os plugins
+git clone https://github.com/franklinbravos/crossbot.git ~/crossbot
+cd ~/crossbot
+./scripts/bootstrap.sh --yes
 ```
 
-Habilite em cada profile `config.yaml`:
-
-```yaml
-plugins:
-  enabled:
-    - multi-agent-context
-    - kanban-context
-```
-
-→ Setup: [docs/onboarding/02-instalar-e-adaptar.md](./docs/onboarding/02-instalar-e-adaptar.md)  
-→ Workspace: [docs/onboarding/03-workspace-e-colegas.md](./docs/onboarding/03-workspace-e-colegas.md)
-→ Handoff operador: [docs/onboarding/HANDOFF-DEPLOY.md](./docs/onboarding/HANDOFF-DEPLOY.md)
-
-**Teste cross-bot (telefone sem fio):**
+Com chat_id e roster conhecidos:
 
 ```bash
-PHRASE="O rato roeu" ./scripts/telefone-sem-fio.sh
+./scripts/bootstrap.sh --yes \
+  --chat-id -100XXXXXXXXXX \
+  --orchestrator coordenador \
+  --players agente-a,agente-b
 ```
 
-## Estrutura
+---
 
+## Auto-atualização
+
+```bash
+~/crossbot/scripts/setup-auto-update-cron.sh   # cron diário
+~/crossbot/scripts/auto-update.sh --restart    # manual
 ```
-plugins/           ← pacotes instaláveis
-  kanban-context/      cross-bot + Kanban
-  multi-agent-context/ histórico compartilhado (obrigatório p/ cross-bot)
-  async-delegate/      tarefas background (opcional)
-scripts/
-  install.sh         ← instalador
-docs/
-  onboarding/        ← guias passo a passo
-  reference/         ← debug, feature map
-  archive/           ← changelog histórico
+
+O auto-update faz `git pull`, reinstala o plugin, migra legado e opcionalmente reinicia o gateway. Logs: `~/.hermes/logs/crossbot/auto-update.log`.
+
+---
+
+## O que é
+
+| Problema | Solução crossbot |
+|----------|------------------|
+| Bots não veem mensagens de outros bots | Outbox SQLite + Kanban |
+| Operador não vê trocas entre bots | Espelho 📤/📥 no Telegram |
+| Delegação complexa | Mencione `@handle_colega` na resposta |
+| Dois plugins antigos | **Um plugin** — `crossbot` |
+
+Incorpora **kanban-context** (Franklin Bravos) e **multi-agent-context** (Kaishi). → [ATTRIBUTION.md](./plugins/crossbot/ATTRIBUTION.md)
+
+---
+
+## Teste
+
+```bash
+PHRASE="O rato roeu" ~/crossbot/scripts/telefone-sem-fio.sh
 ```
+
+→ [docs/onboarding/05-telefone-sem-fio.md](./docs/onboarding/05-telefone-sem-fio.md)
+
+---
+
+## Scripts
+
+| Script | Função |
+|--------|--------|
+| `bootstrap.sh` | **Instalação completa** (migrate + install + configure + board + restart) |
+| `install.sh` | Só copia plugin (+ migrate se `cross-bot`) |
+| `auto-update.sh` | Pull + reinstall + migrate |
+| `setup-auto-update-cron.sh` | Agenda cron diário |
+| `configure-crossbot.sh` | topic-map + CROSSBOT_BOT_NAME |
+| `telefone-sem-fio.sh` | Benchmark cross-bot |
+
+---
 
 ## Documentação
 
 | Guia | Link |
 |------|------|
-| Hub | [docs/README.md](./docs/README.md) |
-| Como funciona | [01-como-funciona.md](./docs/onboarding/01-como-funciona.md) |
+| Instalação (copiar pro Hermes) | [HERMES-INSTALL-PROMPT.md](./docs/onboarding/HERMES-INSTALL-PROMPT.md) |
 | Instalar e adaptar | [02-instalar-e-adaptar.md](./docs/onboarding/02-instalar-e-adaptar.md) |
 | Workspace e colegas | [03-workspace-e-colegas.md](./docs/onboarding/03-workspace-e-colegas.md) |
-| Guia do agente | [04-guia-agente-hermes.md](./docs/onboarding/04-guia-agente-hermes.md) |
-| Telefone sem fio | [05-telefone-sem-fio.md](./docs/onboarding/05-telefone-sem-fio.md) · `./scripts/telefone-sem-fio.sh` |
+| Debug | [debug-crossbot.md](./docs/reference/debug-crossbot.md) |
+| Hub | [docs/README.md](./docs/README.md) |
 
-## Plugins
+---
 
-| Plugin | Descrição | README |
-|--------|-----------|--------|
-| **kanban-context** | Cross-bot + Kanban + visibilidade Telegram | [plugins/kanban-context/](./plugins/kanban-context/) |
-| **multi-agent-context** | Histórico Discord/Telegram compartilhado | [plugins/multi-agent-context/](./plugins/multi-agent-context/) |
-| **async-delegate** | Subagentes em background | [plugins/async-delegate/](./plugins/async-delegate/) |
+## Migração desde plugins antigos
 
-## Multi-profile
+O **bootstrap** e o **install.sh cross-bot** removem automaticamente:
 
-```bash
-for bot in orchestrator ops agent-alpha; do
-  mkdir -p ~/.hermes/profiles/${bot}/plugins
-  ln -sf ~/.hermes/plugins/kanban-context ~/.hermes/profiles/${bot}/plugins/kanban-context
-  ln -sf ~/.hermes/plugins/multi-agent-context ~/.hermes/profiles/${bot}/plugins/multi-agent-context
-done
-```
+- `~/.hermes/plugins/kanban-context` e `multi-agent-context`
+- Symlinks legados em `profiles/*/plugins/`
+- Entradas legadas em `config.yaml` → substituídas por `crossbot`
+- `.env`: adiciona `CROSSBOT_BOT_NAME` e `CROSSBOT_DB_PATH` se faltarem
 
-## Requirements
+Repo antigo `hermes-community-plugins` → renomeie remote para `crossbot` ou clone fresh em `~/crossbot`.
 
-- Hermes Agent **v0.13+** · Python **3.11+** · stdlib only (plugins principais)
+---
 
-## License
+## Licença
 
 MIT

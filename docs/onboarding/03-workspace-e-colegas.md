@@ -36,7 +36,7 @@ Workspace (grupo fórum)
 
 ## topic-map.json — contrato técnico
 
-Arquivo: `~/.hermes/plugins/kanban-context/topic-map.json`
+Arquivo: `~/.hermes/plugins/crossbot/topic-map.json`
 
 ```json
 {
@@ -56,8 +56,7 @@ Arquivo: `~/.hermes/plugins/kanban-context/topic-map.json`
 |-------|----------------|
 | Chave em `topics` / `handles` | Nome da pasta em `~/.hermes/profiles/` |
 | `CROSSBOT_BOT_NAME` no `.env` | Mesma chave |
-| `crossbot_send(to_bot="...")` | Mesma chave |
-| `handles` | Username Telegram **sem** `@` |
+| `@mention` no texto | `handles` (username Telegram **sem** `@`) |
 
 ---
 
@@ -67,7 +66,7 @@ Cada agente **deve** saber:
 
 1. **Quem sou eu** — profile, @ Telegram, meu tópico
 2. **Quem são os colegas** — profile, @, tópico, função
-3. **Como acionar** — menção `@` no grupo vs `crossbot_send(profile)`
+3. **Como acionar** — menção `@` no texto (humano ou bot)
 
 ### Tabela para colar no SOUL de cada agente
 
@@ -80,17 +79,17 @@ Preencha com dados **reais** do inventário ([02-instalar-e-adaptar](./02-instal
 
 ### Colegas
 
-| Profile (crossbot) | @ Telegram | Tópico (departamento) | Acionar quando |
-|--------------------|------------|------------------------|----------------|
+| Profile | @ Telegram | Tópico (departamento) | Acionar quando |
+|---------|------------|------------------------|----------------|
 | colega-a | @handle_a | Nome tópico A | descreva a função |
 | colega-b | @handle_b | Nome tópico B | descreva a função |
 
 ### Regras de acionamento
 
 - **Humano no grupo:** mencione @handle no tópico correto
-- **Bot → bot (delegação):** `crossbot_send(to_bot="profile-colega", ...)`
+- **Bot → bot (delegação):** escreva `@handle` + pedido claro na sua resposta
 - **Não responda** se `[Response Coordination]` indicar que outro colega foi mencionado
-- **Cross-bot:** endereço = nome do **profile**, não o @ Telegram
+- **Fallback avançado:** `crossbot_send(to_bot="profile-colega", ...)` só se menção não for possível
 ```
 
 Template editável: [../reference/mapa-colegas.template.md](../reference/mapa-colegas.template.md)
@@ -102,9 +101,10 @@ Template editável: [../reference/mapa-colegas.template.md](../reference/mapa-co
 | Tipo | Quando | Como |
 |------|--------|------|
 | **Menção @** | Humano fala com um bot no workspace | `@handle pergunta` no tópico do departamento |
-| **Cross-bot** | Bot delega a outro bot | `crossbot_send(to_bot="profile-colega", ...)` ou CLI |
+| **Cross-bot (mention relay)** | Bot delega a outro bot | `@handle_colega` + pedido na resposta — plugin cria outbox + task |
+| **Cross-bot (explícito)** | Debug, telefone-sem-fio, integração | `crossbot_send` ou `crossbot_cli` |
 
-Cross-bot **não** substitui menção humana — são canais complementares.
+Menção @ cobre **humano→bot** e **bot→bot** no fluxo normal (crossbot v0.5+).
 
 ---
 
@@ -113,7 +113,7 @@ Cross-bot **não** substitui menção humana — são canais complementares.
 | Direção | Onde aparece |
 |---------|--------------|
 | 📤 envio | Tópico do **destinatário** (colega que vai processar) |
-| 📥 resposta | Tópico do **respondedor** |
+| 📥 resposta | Tópico do **respondedor** (reply real ou citação ↩) |
 
 Operador humano acompanha no workspace sem abrir DMs.
 
@@ -127,7 +127,7 @@ Operador humano acompanha no workspace sem abrir DMs.
 - [ ] Tópico criado no workspace (se ainda não existia)
 - [ ] SOUL atualizado com **mapa de colegas**
 - [ ] Plugins habilitados + gateway reiniciado
-- [ ] Smoke test com outro profile real
+- [ ] Smoke test: bot menciona @colega e colega responde
 
 ## Checklist — adicionar colega novo depois
 

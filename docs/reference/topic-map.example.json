@@ -1,5 +1,5 @@
 {
-  "comment": "Modelo genérico — copie para ~/.hermes/plugins/kanban-context/topic-map.json",
+  "comment": "Modelo genérico — copie para ~/.hermes/plugins/crossbot/topic-map.json",
   "chat_id": "-100XXXXXXXXXX",
   "topics": {
     "orchestrator": 0,

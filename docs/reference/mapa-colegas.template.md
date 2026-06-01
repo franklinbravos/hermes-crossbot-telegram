@@ -24,7 +24,7 @@
 ## Como falar com colegas
 
 - **Operador humano @menciona:** respondo se for meu @ ou meu tópico
-- **Delegação bot→bot:** `CROSSBOT_BOT_NAME=SEU_PROFILE python3 ~/.hermes/plugins/kanban-context/crossbot_cli.py send PROFILE_COLEGA "Assunto" "Corpo"`
+- **Delegação bot→bot:** `CROSSBOT_BOT_NAME=SEU_PROFILE python3 ~/.hermes/plugins/crossbot/crossbot_cli.py send PROFILE_COLEGA "Assunto" "Corpo"`
 - **Endereço cross-bot:** sempre o **nome do profile** (coluna Profile), nunca só o @
 - **Não respondo** se outro colega foi @mencionado ([Response Coordination])
 

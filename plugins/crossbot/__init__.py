@@ -1,6 +1,13 @@
-"""kanban-context — injects Kanban activity + cross-bot messaging for agents.
+"""crossbot — Telegram mensagem bot-to-bot para Hermes Agent.
 
-Two integrated features:
+Plugin unificado (v0.5, pré-release): histórico compartilhado + outbox + Kanban dispatch +
+mention relay + visibilidade Telegram.
+
+Origem dos módulos incorporados:
+  - kanban-context (Franklin Bravos) — cross-bot, Kanban, mention relay
+  - multi-agent-context (Kaishi) — histórico Telegram/Discord compartilhado
+
+Dependências: Hermes Core + stdlib Python apenas.
 
 FEATURE 1: Kanban Activity Injection
 -------------------------------------
@@ -37,7 +44,8 @@ Configuration via environment variables
 -----------------------------------------
     KANBAN_CONTEXT_EVENT_LIMIT   — Max events to inject (default: 10)
     KANBAN_CONTEXT_LOOKBACK_H    — Lookback window in hours (default: 12)
-    MULTI_AGENT_TG_DB_PATH       — Shared SQLite DB path (from multi-agent-context)
+    CROSSBOT_DB_PATH             — Shared SQLite DB (default: ~/.hermes/data/crossbot.db)
+    MULTI_AGENT_TG_DB_PATH       — Alias legado para CROSSBOT_DB_PATH
     CROSSBOT_BOT_NAME            — This bot's name for outbox addressing
                                    (default: HERMES profile name or "bot")
 """
@@ -58,6 +66,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+_plugin_dir = Path(__file__).resolve().parent
+if str(_plugin_dir) not in sys.path:
+    sys.path.insert(0, str(_plugin_dir))
+try:
+    import shared_history as _shared_history
+except ImportError:
+    from . import shared_history as _shared_history  # type: ignore[no-redef]
 
 # ---------------------------------------------------------------------------
 # Path resolution
@@ -192,11 +208,8 @@ def _create_crossbot_kanban_task(
 
 
 def _shared_db_path() -> str:
-    """Path to the shared multi-agent SQLite DB (from multi-agent-context)."""
-    return os.environ.get(
-        "MULTI_AGENT_TG_DB_PATH",
-        str(_hermes_home() / "data" / "multi_agent_tg_shared.db"),
-    ).strip()
+    """Path to the shared crossbot SQLite DB (outbox + group history)."""
+    return _shared_history.shared_db_path()
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +269,9 @@ _OUTBOX_TABLE = """\
         status          TEXT    DEFAULT 'pending',  -- pending | delivered | done
         response_text   TEXT    DEFAULT '',
         completed_at    REAL    DEFAULT NULL,
-        telegram_msg_id INTEGER DEFAULT NULL
+        telegram_msg_id INTEGER DEFAULT NULL,
+        source_telegram_msg_id INTEGER DEFAULT NULL,
+        source_message_text TEXT DEFAULT ''
     )
 """
 
@@ -288,11 +303,15 @@ def _open_shared_db():
     conn.execute(_OUTBOX_TABLE)
     conn.execute(_RESPONSE_LOG_TABLE)
     conn.execute(_CREATE_INDEX_RL)
-    # Migration: add telegram_msg_id column if missing
-    try:
-        conn.execute("ALTER TABLE outbox ADD COLUMN telegram_msg_id INTEGER DEFAULT NULL")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    for col, typedef in (
+        ("telegram_msg_id", "INTEGER DEFAULT NULL"),
+        ("source_telegram_msg_id", "INTEGER DEFAULT NULL"),
+        ("source_message_text", "TEXT DEFAULT ''"),
+    ):
+        try:
+            conn.execute(f"ALTER TABLE outbox ADD COLUMN {col} {typedef}")
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     return conn
 
@@ -328,28 +347,165 @@ def _detect_mentions(text: str) -> List[str]:
     return mentioned
 
 
+def _is_kanban_worker_session() -> bool:
+    return bool(os.environ.get("HERMES_KANBAN_TASK", "").strip())
+
+
+def _mention_relay_window() -> int:
+    try:
+        return max(10, int(os.environ.get("CROSSBOT_MENTION_DEDUP_SECONDS", "60")))
+    except (ValueError, TypeError):
+        return 60
+
+
+def _mention_already_relayed(from_bot: str, to_bot: str, message_text: str) -> bool:
+    """Skip duplicate mention relays within a short window."""
+    cutoff = time.time() - _mention_relay_window()
+    conn = _open_shared_db()
+    try:
+        row = conn.execute(
+            "SELECT id FROM outbox "
+            "WHERE from_bot=? AND to_bot=? AND body=? AND ts >= ? LIMIT 1",
+            (from_bot, to_bot, message_text, cutoff),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def _resolve_sent_telegram_msg_id(
+    *,
+    session_id: str,
+    sender: str,
+    message_text: str,
+    kwargs: Optional[Dict[str, Any]] = None,
+) -> Optional[int]:
+    """Best-effort lookup of the Telegram message_id for an assistant turn."""
+    kwargs = kwargs or {}
+    for key in ("sent_message_id", "last_sent_message_id", "telegram_message_id"):
+        raw = kwargs.get(key)
+        if raw is not None:
+            try:
+                return int(raw)
+            except (TypeError, ValueError):
+                pass
+
+    try:
+        from gateway.session_context import get_session_env
+        raw = get_session_env("HERMES_SESSION_LAST_SENT_MESSAGE_ID")
+        if raw:
+            return int(raw)
+    except Exception:
+        pass
+
+    try:
+        conn = sqlite3.connect(_shared_db_path(), timeout=5)
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            row = conn.execute(
+                "SELECT telegram_msg_id FROM messages "
+                "WHERE sender=? AND text=? AND telegram_msg_id IS NOT NULL "
+                "ORDER BY ts DESC LIMIT 1",
+                (sender, message_text.strip()[:1000]),
+            ).fetchone()
+            if row and row[0]:
+                return int(row[0])
+        except sqlite3.OperationalError:
+            pass
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    if session_id:
+        try:
+            chat_key = session_id.split(":")[4] if session_id.count(":") >= 5 else session_id
+            conn = sqlite3.connect(_shared_db_path(), timeout=5)
+            try:
+                row = conn.execute(
+                    "SELECT telegram_msg_id FROM messages "
+                    "WHERE chat_key=? AND sender=? AND text LIKE ? "
+                    "AND telegram_msg_id IS NOT NULL ORDER BY ts DESC LIMIT 1",
+                    (chat_key, sender, message_text.strip()[:200] + "%"),
+                ).fetchone()
+                if row and row[0]:
+                    return int(row[0])
+            except sqlite3.OperationalError:
+                pass
+            finally:
+                conn.close()
+        except Exception:
+            pass
+    return None
+
+
+def _format_worker_crossbot_instruction(outbox_id: int, to_bot: str) -> str:
+    """Short worker guidance for mention-relay tasks."""
+    return (
+        f"INSTRUCTION TO WORKER (outbox #{outbox_id}):\n"
+        f"1. Read the message from @{to_bot}'s colleague above\n"
+        f"2. Reply naturally in your own words\n"
+        f"3. The plugin publishes your reply to Telegram automatically\n"
+        f"4. Then call kanban_complete — no crossbot_cli needed"
+    )
+
+
+def _format_citation_reply(
+    requester_handle: str,
+    source_text: str,
+    response_text: str,
+) -> str:
+    """Simulate a Telegram reply when cross-bot reply_to is rejected."""
+    lines = source_text.strip().splitlines()[:8]
+    quoted = "\n".join(
+        f"&gt; {_escape_telegram_html(line)}" for line in lines if line.strip()
+    )
+    if not quoted:
+        quoted = "&gt; …"
+    return (
+        f"↩ <b>@{_escape_telegram_html(requester_handle)}</b>\n"
+        f"{quoted}\n\n"
+        f"{_escape_telegram_html(response_text)}"
+    )
+
+
 def _auto_create_task_from_mention(
     from_bot: str,
     to_bot: str,
     message_text: str,
-    telegram_msg_id: Optional[int] = None,
+    source_telegram_msg_id: Optional[int] = None,
 ) -> Optional[str]:
     """Auto-create a kanban task when a @mention is detected.
 
-    Called from the pre_llm_call hook when a message mentions another bot.
-    Creates a kanban task assigned to the mentioned bot so the dispatcher
-    picks it up and spawns a worker.
-
+    Creates an outbox row and Kanban task assigned to the mentioned bot.
     Returns the kanban task ID if created, None otherwise.
     """
-    # First, create an outbox entry so crossbot_respond() has an ID to use
+    if _mention_already_relayed(from_bot, to_bot, message_text):
+        logger.debug(
+            "kanban-context: skip duplicate mention relay %s -> %s",
+            from_bot, to_bot,
+        )
+        return None
+
     conn = _open_shared_db()
     try:
         with conn:
             cur = conn.execute(
-                "INSERT INTO outbox (id, ts, from_bot, to_bot, subject, body, kanban_task_id, status) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')",
-                (None, time.time(), from_bot, to_bot, f"[Mention] @{from_bot}", message_text, None),
+                "INSERT INTO outbox ("
+                "id, ts, from_bot, to_bot, subject, body, kanban_task_id, status, "
+                "source_telegram_msg_id, source_message_text"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
+                (
+                    None,
+                    time.time(),
+                    from_bot,
+                    to_bot,
+                    f"[Mention] @{from_bot}",
+                    message_text,
+                    None,
+                    source_telegram_msg_id,
+                    message_text,
+                ),
             )
             outbox_id = cur.lastrowid
     finally:
@@ -357,7 +513,7 @@ def _auto_create_task_from_mention(
 
     try:
         _kc_body = (
-            f"[AUTO-MENTION from @{from_bot}]\n"
+            f"[Mention from @{from_bot}]\n"
             f"Outbox ID: {outbox_id}\n\n"
             f"{message_text}\n\n"
             f"---\n"
@@ -372,7 +528,6 @@ def _auto_create_task_from_mention(
             initial_status="running",
         )
 
-        # Update outbox with kanban_task_id
         conn2 = _open_shared_db()
         try:
             conn2.execute(
@@ -383,8 +538,16 @@ def _auto_create_task_from_mention(
         finally:
             conn2.close()
 
+        _crossbot_audit_log(
+            "mention_relay",
+            outbox_id=outbox_id,
+            from_bot=from_bot,
+            to_bot=to_bot,
+            kanban_task_id=_task_id,
+            source_telegram_msg_id=source_telegram_msg_id,
+        )
         logger.info(
-            "kanban-context: auto-created task %s for @%s (mentioned by @%s, outbox #%d)",
+            "kanban-context: mention relay task %s for @%s (from @%s, outbox #%d)",
             _task_id, to_bot, from_bot, outbox_id,
         )
         return _task_id
@@ -483,22 +646,8 @@ def _write_visibility_config(data: dict) -> bool:
 
 
 def _crossbot_cli_path() -> str:
-    """Absolute path to crossbot_cli.py for worker terminal instructions."""
+    """Absolute path to crossbot_cli.py for advanced/debug cross-bot use."""
     return str((Path(__file__).resolve().parent / "crossbot_cli.py"))
-
-
-def _format_worker_crossbot_instruction(outbox_id: int, to_bot: str) -> str:
-    """Instructions for Kanban workers without plugin tools in toolset."""
-    cli = _crossbot_cli_path()
-    return (
-        f"INSTRUCTION TO WORKER (outbox #{outbox_id}):\n"
-        f"1. Read and process the message above\n"
-        f"2. You do NOT have crossbot_respond as a tool — use terminal instead:\n"
-        f'   CROSSBOT_BOT_NAME={to_bot} python3 "{cli}" respond {outbox_id} "YOUR RESPONSE"\n'
-        f"3. Call the above BEFORE kanban_complete\n"
-        f"4. Do NOT use: from kanban_context import ... (module does not exist)\n"
-        f"5. Do NOT message the human operator in DM unless explicitly asked"
-    )
 
 
 def _setup_visibility_config() -> bool:
@@ -590,7 +739,7 @@ def _crossbot_audit_log(event: str, **fields: Any) -> None:
     try:
         log_path = os.environ.get(
             "CROSSBOT_AUDIT_LOG",
-            str(_real_hermes_home() / "logs" / "kanban-context" / "crossbot-audit.jsonl"),
+            str(_real_hermes_home() / "logs" / "crossbot" / "crossbot-audit.jsonl"),
         ).strip()
         log_dir = os.path.dirname(log_path)
         if log_dir:
@@ -680,15 +829,12 @@ def _post_visibility_message(
     reply_to: Optional[int] = None,
     outbox_id: Optional[int] = None,
     post_as_bot: Optional[str] = None,
+    citation_html: Optional[str] = None,
 ) -> Optional[int]:
     """Post a cross-bot message to the Telegram group for human visibility.
 
-    post_as_bot: profile name whose TELEGRAM_BOT_TOKEN to use (shows as that bot
-    in Telegram). For responses, pass the responder (e.g. agente-b). For sends,
-    pass the sender (e.g. coordenador). Falls back to visibility token if missing.
-
-    reply_to is skipped when post_as_bot is set — different bot cannot reply
-    to another bot's message; avoids the sender appearing as self-reply.
+    Tries ``reply_to`` when provided. On Telegram rejection, falls back to
+    ``citation_html`` (simulated reply) then plain ``text``.
     """
     import urllib.error
     import urllib.request
@@ -713,27 +859,24 @@ def _post_visibility_message(
     except (ValueError, TypeError):
         reply_to_int = None
 
-    # Cross-bot tokens cannot reply_to each other's messages — skip when posting
-    # as a different bot than the visibility mirror bot.
-    if post_as_bot:
-        reply_to_int = None
-
     prefix = "📤" if direction == "sent" else "📥"
     handle = _get_bot_handle(post_as_bot) if post_as_bot else "Cross-Bot"
-    full_text = (
+    plain_html = (
         f"{prefix} <b>@{_escape_telegram_html(handle)}</b>\n\n"
         f"{_escape_telegram_html(text)}"
     )
 
-    attempts: List[Optional[int]] = []
+    attempts: List[Tuple[str, Optional[int], str]] = []
     if reply_to_int is not None:
-        attempts.append(reply_to_int)
-    attempts.append(None)
+        attempts.append(("reply", reply_to_int, plain_html))
+    if citation_html:
+        attempts.append(("citation", None, citation_html))
+    attempts.append(("plain", None, plain_html))
 
-    for reply_to_try in attempts:
+    for attempt_name, reply_to_try, body_html in attempts:
         payload: Dict[str, Any] = {
             "chat_id": chat_id,
-            "text": full_text,
+            "text": body_html,
             "parse_mode": "HTML",
         }
         if msg_thread_int is not None:
@@ -754,12 +897,12 @@ def _post_visibility_message(
                     "visibility_post", outbox_id=outbox_id, direction=direction, token=token,
                     chat_id=chat_id, thread_id=msg_thread_int, reply_to=reply_to_try,
                     ok=True, telegram_msg_id=msg_id,
-                    attempt="with_reply" if reply_to_try else "no_reply",
+                    attempt=attempt_name,
                     post_as_bot=post_as_bot,
                 )
                 logger.info(
-                    "crossbot-visibility: posted outbox=%s dir=%s as=%s msg_id=%s",
-                    outbox_id, direction, post_as_bot or "visibility", msg_id,
+                    "crossbot-visibility: posted outbox=%s dir=%s as=%s msg_id=%s attempt=%s",
+                    outbox_id, direction, post_as_bot or "visibility", msg_id, attempt_name,
                 )
                 return msg_id
             err = str(result.get("description", "unknown"))
@@ -774,14 +917,17 @@ def _post_visibility_message(
         _crossbot_audit_log(
             "visibility_post", outbox_id=outbox_id, direction=direction, token=token,
             chat_id=chat_id, thread_id=msg_thread_int, reply_to=reply_to_try,
-            ok=False, error=err, attempt="with_reply" if reply_to_try else "no_reply",
+            ok=False, error=err, attempt=attempt_name,
             post_as_bot=post_as_bot,
         )
-        if reply_to_try is None:
-            logger.warning("crossbot-visibility: failed outbox=%s err=%s", outbox_id, err)
-            return None
-        if "reply" in err.lower() or "not found" in err.lower():
-            logger.info("crossbot-visibility: reply_to=%s rejected (%s), retry without reply", reply_to_try, err)
+        if attempt_name == "reply":
+            logger.info(
+                "crossbot-visibility: reply_to=%s rejected (%s), trying fallback",
+                reply_to_try, err,
+            )
+            continue
+        if attempt_name == "citation":
+            logger.info("crossbot-visibility: citation fallback failed (%s)", err)
             continue
         logger.warning("crossbot-visibility: failed outbox=%s err=%s", outbox_id, err)
         return None
@@ -826,9 +972,10 @@ def crossbot_send(
     try:
         with conn:
             cur = conn.execute(
-                "INSERT INTO outbox (id, ts, from_bot, to_bot, subject, body, kanban_task_id, status) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')",
-                (None, now, from_bot, to_bot, subject[:200], body, None),
+                "INSERT INTO outbox (id, ts, from_bot, to_bot, subject, body, "
+                "kanban_task_id, status, source_message_text) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
+                (None, now, from_bot, to_bot, subject[:200], body, None, body),
             )
             row_id = cur.lastrowid
     finally:
@@ -926,7 +1073,9 @@ def crossbot_respond(outbox_id: int, response_text: str) -> bool:
     try:
         # Get original message details for visibility + telegram_msg_id for reply
         orig = conn.execute(
-            "SELECT from_bot, to_bot, subject, telegram_msg_id FROM outbox WHERE id=?",
+            "SELECT from_bot, to_bot, subject, telegram_msg_id, "
+            "source_telegram_msg_id, source_message_text, body "
+            "FROM outbox WHERE id=?",
             (outbox_id,),
         ).fetchone()
 
@@ -948,22 +1097,29 @@ def crossbot_respond(outbox_id: int, response_text: str) -> bool:
             to_bot=orig[1] if orig else None,
         )
 
-        # Post visibility message to Telegram group — reply to original message
+        # Post response to Telegram — try real reply, then citation fallback
         if orig:
-            responder = orig[1]  # to_bot — who processed and responds
-            requester = orig[0]   # from_bot — who sent the message
+            responder = orig[1]
+            requester = orig[0]
             topic_id = _get_topic_for_bot(responder)
-            vis_text = (
-                f"Re: {orig[2]}\n"
-                f"Para @{_get_bot_handle(requester)}\n\n"
-                f"{response_text}\n\n"
-                f"└ outbox #{outbox_id}"
-            )
+            source_text = (orig[5] or orig[6] or "").strip()
+            reply_target = orig[4] or orig[3]
+            requester_handle = _get_bot_handle(requester)
+            vis_text = response_text
+            citation_html = None
+            if source_text:
+                citation_html = (
+                    f"📥 <b>@{_escape_telegram_html(_get_bot_handle(responder))}</b>\n\n"
+                    + _format_citation_reply(requester_handle, source_text, response_text)
+                )
             _post_visibility_message(
-                vis_text, "responded",
+                vis_text,
+                "responded",
                 thread_id=str(topic_id) if topic_id else None,
+                reply_to=int(reply_target) if reply_target else None,
                 outbox_id=outbox_id,
                 post_as_bot=responder,
+                citation_html=citation_html,
             )
 
         return True
@@ -1184,16 +1340,8 @@ def _read_pending_messages() -> str:
         lines.append(f"  > {body}")
     lines.extend([
         "",
-        "⚠️ MANDATORY — workers without crossbot_respond tool must use terminal:",
-        f'  CROSSBOT_BOT_NAME={_my_bot_name()} python3 "{_crossbot_cli_path()}" respond OUTBOX_ID "reply"',
-        "",
-        "Or if crossbot_respond tool is available:",
-    ])
-    for msg in pending:
-        lines.append(f"  crossbot_respond(outbox_id={msg['id']}, response_text=\"<reply>\")")
-    lines.extend([
-        "",
-        "Do NOT finish with only kanban_comment or kanban_complete.",
+        "Reply naturally to the message above. The plugin publishes your response",
+        "to Telegram and completes the outbox automatically when you finish.",
         "",
     ])
     lines.append("[End Pending Messages]")
@@ -1335,7 +1483,7 @@ def _cleanup_stale_pending() -> int:
 def _cleanup_old_log_files() -> int:
     """Remove kanban-context log files older than retention."""
     retention = _get_log_retention_days()
-    log_dir = _hermes_home() / "logs" / "kanban-context"
+    log_dir = _hermes_home() / "logs" / "crossbot"
     if not log_dir.is_dir():
         return 0
     cutoff = time.time() - retention * 86400
@@ -1825,14 +1973,107 @@ def _auto_detect_mentions(**kwargs) -> Optional[Dict[str, str]]:
             created_tasks.append((to_bot, task_id))
 
     if created_tasks:
-        # Return context so the agent knows tasks were created
-        lines = ["[Auto-Mention Tasks Created]"]
-        for to_bot, task_id in created_tasks:
-            lines.append(f"- @{to_bot}: task {task_id}")
-        lines.append("")
-        lines.append("The mentioned bots will process these tasks and respond in the group.")
-        return {"context": "\n".join(lines)}
+        logger.info(
+            "kanban-context: user-message mention relay created %d task(s)",
+            len(created_tasks),
+        )
 
+    return None
+
+
+def _outbox_id_for_current_worker() -> Optional[int]:
+    """Resolve pending outbox id for the active Kanban worker session."""
+    task_id = os.environ.get("HERMES_KANBAN_TASK", "").strip()
+    if task_id:
+        conn = _open_shared_db()
+        try:
+            row = conn.execute(
+                "SELECT id FROM outbox WHERE kanban_task_id=? AND status='pending' "
+                "ORDER BY ts ASC LIMIT 1",
+                (task_id,),
+            ).fetchone()
+            if row:
+                return int(row[0])
+        finally:
+            conn.close()
+
+    pending = _fetch_pending_messages()
+    if len(pending) == 1:
+        return int(pending[0]["id"])
+    return None
+
+
+def _relay_mentions_from_assistant(**kwargs) -> None:
+    """post_llm_call — bot mentions @colleague in its reply → outbox + Kanban task."""
+    if _is_kanban_worker_session():
+        return None
+
+    assistant_response = (kwargs.get("assistant_response") or "").strip()
+    if not assistant_response:
+        return None
+
+    mentioned_bots = _detect_mentions(assistant_response)
+    if not mentioned_bots:
+        return None
+
+    from_bot = _my_bot_name()
+    mentioned_bots = [b for b in mentioned_bots if b != from_bot]
+    if not mentioned_bots:
+        return None
+
+    source_msg_id = _resolve_sent_telegram_msg_id(
+        session_id=str(kwargs.get("session_id") or ""),
+        sender=from_bot,
+        message_text=assistant_response,
+        kwargs=kwargs,
+    )
+
+    for to_bot in mentioned_bots:
+        _auto_create_task_from_mention(
+            from_bot=from_bot,
+            to_bot=to_bot,
+            message_text=assistant_response,
+            source_telegram_msg_id=source_msg_id,
+        )
+    return None
+
+
+def _auto_complete_crossbot_response(**kwargs) -> None:
+    """post_llm_call — Kanban worker: auto-publish reply and close outbox."""
+    if not _is_kanban_worker_session():
+        return None
+
+    assistant_response = (kwargs.get("assistant_response") or "").strip()
+    if not assistant_response:
+        return None
+
+    outbox_id = _outbox_id_for_current_worker()
+    if not outbox_id:
+        return None
+
+    conn = _open_shared_db()
+    try:
+        row = conn.execute(
+            "SELECT status FROM outbox WHERE id=?",
+            (outbox_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row or row[0] != "pending":
+        return None
+
+    if crossbot_respond(outbox_id, assistant_response):
+        logger.info(
+            "kanban-context: auto-completed crossbot outbox #%d for worker %s",
+            outbox_id, _my_bot_name(),
+        )
+    return None
+
+
+def _post_llm_mention_relay(**kwargs) -> None:
+    """Run mention relay then auto-complete in post_llm_call order."""
+    _relay_mentions_from_assistant(**kwargs)
+    _auto_complete_crossbot_response(**kwargs)
     return None
 
 
@@ -1889,38 +2130,6 @@ def _validate_hermes_version(vr: ValidationResult) -> None:
         vr.warnings.append(
             "Could not detect Hermes Agent version (hermes_core.version not found). "
             "Assuming compatibility — if you hit issues, check Hermes >= v0.13.0."
-        )
-
-
-def _validate_multi_agent_plugin(vr: ValidationResult) -> None:
-    """Check that multi-agent-context plugin is installed (required dependency)."""
-    plugin_dirs = _hermes_home() / "plugins"
-    if not plugin_dirs.is_dir():
-        vr.warnings.append(
-            f"Plugin directory not found at {plugin_dirs}. "
-            "Make sure multi-agent-context is installed for the shared DB."
-        )
-        return
-
-    found = False
-    try:
-        for d in plugin_dirs.iterdir():
-            if d.is_dir() and d.name == "multi-agent-context":
-                found = True
-                break
-    except PermissionError:
-        vr.warnings.append(
-            f"Cannot read plugin directory {plugin_dirs} (permission). "
-            "Please verify multi-agent-context is installed."
-        )
-        return
-
-    if not found:
-        vr.warnings.append(
-            "multi-agent-context plugin not found in plugins directory. "
-            "kanban-context's cross-bot messaging requires multi-agent-context "
-            "for the shared SQLite database. "
-            "Install it from https://github.com/franklinbravos/hermes-community-plugins"
         )
 
 
@@ -2024,7 +2233,7 @@ def _validate_env_vars(vr: ValidationResult) -> None:
 
 def _validate_log_dir(vr: ValidationResult) -> None:
     """Ensure the kanban plugin log directory exists and is writable."""
-    log_dir = _hermes_home() / "logs" / "kanban-context"
+    log_dir = _hermes_home() / "logs" / "crossbot"
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
     except Exception as exc:
@@ -2039,7 +2248,6 @@ def run_validation() -> ValidationResult:
     vr = ValidationResult()
     _validate_python_version(vr)
     _validate_hermes_version(vr)
-    _validate_multi_agent_plugin(vr)
     _validate_shared_db(vr)
     _validate_kanban_db(vr)
     _validate_bot_name(vr)
@@ -2050,7 +2258,9 @@ def run_validation() -> ValidationResult:
 
 def _get_plugin_version() -> str:
     """Read plugin version from plugin.yaml."""
-    plugin_yaml = _hermes_home() / "plugins" / "kanban-context" / "plugin.yaml"
+    plugin_yaml = Path(__file__).resolve().parent / "plugin.yaml"
+    if not plugin_yaml.is_file():
+        plugin_yaml = _hermes_home() / "plugins" / "crossbot" / "plugin.yaml"
     try:
         with open(str(plugin_yaml)) as f:
             for line in f:
@@ -2218,7 +2428,16 @@ def register(ctx) -> None:
         },
     )
 
+    ctx.register_hook("pre_llm_call", _shared_history.inject_channel_context)
     ctx.register_hook("pre_llm_call", _inject_kanban_context)
     ctx.register_hook("pre_llm_call", _handle_status_command)
     ctx.register_hook("pre_llm_call", _inject_response_coordination)
     ctx.register_hook("pre_llm_call", _auto_detect_mentions)
+    ctx.register_hook("post_llm_call", _shared_history.record_telegram_turn)
+    ctx.register_hook("post_llm_call", _post_llm_mention_relay)
+    logger.info(
+        "crossbot plugin v%s registered (tg_db=%s, history=%d)",
+        _get_plugin_version(),
+        _shared_db_path(),
+        int(os.environ.get("MULTI_AGENT_HISTORY_COUNT", "20")),
+    )

@@ -46,12 +46,12 @@ O script lê o **roster** de `topic-map.json` (todos os profiles exceto o orches
 
 **Frase para pedir ao bot orchestrator no chat:**
 
-> Roda telefone sem fio: `PHRASE="O rato roeu" ~/hermes-community-plugins/scripts/telefone-sem-fio.sh`
+> Roda telefone sem fio: `PHRASE="O rato roeu" ~/crossbot/scripts/telefone-sem-fio.sh`
 
 **Acompanhar:**
 
 ```bash
-tail -f ~/.hermes/logs/kanban-context/crossbot-audit.jsonl | grep TelefoneSemFio
+tail -f ~/.hermes/logs/crossbot/crossbot-audit.jsonl | grep TelefoneSemFio
 ```
 
 ---
