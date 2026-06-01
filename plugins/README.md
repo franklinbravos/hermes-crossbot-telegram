@@ -2,12 +2,12 @@
 
 Pacotes instaláveis para [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 
-Repositório: **[crossbot](https://github.com/franklinbravos/crossbot)**
+Repositório: **[hermes-crossbot-telegram](https://github.com/franklinbravos/hermes-crossbot-telegram)**
 
 ## Instalação rápida
 
 ```bash
-git clone https://github.com/franklinbravos/crossbot.git
+git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git
 cd crossbot
 chmod +x scripts/install.sh
 ./scripts/install.sh              # crossbot (recomendado)

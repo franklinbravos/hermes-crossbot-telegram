@@ -54,8 +54,8 @@ Preencha esta tabela (copie para seu runbook):
 **Ou no terminal:**
 
 ```bash
-git clone https://github.com/franklinbravos/crossbot.git ~/crossbot
-cd ~/crossbot
+git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git ~/hermes-crossbot-telegram
+cd ~/hermes-crossbot-telegram
 ./scripts/bootstrap.sh --yes
 ```
 

@@ -130,9 +130,9 @@ Também lê `HERMES_SESSION_LAST_SENT_MESSAGE_ID` e correlaciona via `messages.t
 ## Deploy após pull
 
 ```bash
-cd ~/crossbot && ./scripts/auto-update.sh --restart
+cd ~/hermes-crossbot-telegram && ./scripts/auto-update.sh --restart
 # ou primeira vez / onboarding completo:
-cd ~/crossbot && ./scripts/bootstrap.sh --yes --update-only
+cd ~/hermes-crossbot-telegram && ./scripts/bootstrap.sh --yes --update-only
 ```
 
 **Cron:** `./scripts/setup-auto-update-cron.sh`

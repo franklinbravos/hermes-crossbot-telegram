@@ -2,8 +2,8 @@
 # Remote bootstrap — clone crossbot and run full install (for curl | bash).
 set -euo pipefail
 
-CROSSBOT_REPO="${CROSSBOT_REPO:-https://github.com/franklinbravos/crossbot.git}"
-CROSSBOT_HOME="${CROSSBOT_HOME:-${HOME}/crossbot}"
+CROSSBOT_REPO="${CROSSBOT_REPO:-https://github.com/franklinbravos/hermes-crossbot-telegram.git}"
+CROSSBOT_HOME="${CROSSBOT_HOME:-${HOME}/hermes-crossbot-telegram}"
 
 if [[ -d "${CROSSBOT_HOME}/scripts/bootstrap.sh" ]]; then
   exec "${CROSSBOT_HOME}/scripts/bootstrap.sh" "$@"

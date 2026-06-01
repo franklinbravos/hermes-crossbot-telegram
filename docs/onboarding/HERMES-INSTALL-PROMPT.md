@@ -12,7 +12,7 @@
 ```
 Preciso que você instale o crossbot aqui no servidor — é o plugin que faz os bots conversarem entre si no Telegram.
 
-Baixe o projeto do GitHub (franklinbravos/crossbot), rode a instalação completa e não pare no meio. Se já existia a versão antiga (kanban-context ou multi-agent-context), limpe isso e deixe só o crossbot.
+Baixe o projeto do GitHub (franklinbravos/hermes-crossbot-telegram), rode a instalação completa e não pare no meio. Se já existia a versão antiga (kanban-context ou multi-agent-context), limpe isso e deixe só o crossbot.
 
 No final me diga:
 - se deu certo ou onde travou
@@ -23,7 +23,7 @@ Se algo faltar (por exemplo chat do Telegram ou nomes dos bots), me pergunte —
 
 Comando para rodar:
 
-bash -c 'set -euo pipefail; CB="${CROSSBOT_HOME:-$HOME/crossbot}"; if [ -d "$CB/.git" ]; then git -C "$CB" pull --ff-only; else git clone https://github.com/franklinbravos/crossbot.git "$CB"; fi; chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh; "$CB"/scripts/bootstrap.sh --yes'
+bash -c 'set -euo pipefail; CB="${CROSSBOT_HOME:-$HOME/hermes-crossbot-telegram}"; if [ -d "$CB/.git" ]; then git -C "$CB" pull --ff-only; else git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git "$CB"; fi; chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh; "$CB"/scripts/bootstrap.sh --yes'
 ```
 
 ---
@@ -42,8 +42,8 @@ Instala o crossbot para mim. Já tenho estes dados do workspace:
 Faz a instalação completa, remove restos da versão antiga se existirem, configura o mapa de tópicos e reinicia o gateway. Me avisa quando terminar ou se precisar de alguma informação que faltou.
 
 bash -c 'set -euo pipefail
-CB="${CROSSBOT_HOME:-$HOME/crossbot}"
-[ -d "$CB/.git" ] && git -C "$CB" pull --ff-only || git clone https://github.com/franklinbravos/crossbot.git "$CB"
+CB="${CROSSBOT_HOME:-$HOME/hermes-crossbot-telegram}"
+[ -d "$CB/.git" ] && git -C "$CB" pull --ff-only || git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git "$CB"
 chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh
 "$CB"/scripts/bootstrap.sh --yes \
   --chat-id "<CHAT_ID>" \
@@ -58,7 +58,7 @@ chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh
 ```
 Atualiza o crossbot neste servidor: puxa a versão nova do GitHub, reinstala o plugin, limpa lixo da versão antiga se aparecer, e reinicia o gateway. Me conta o que mudou e se deu algum erro.
 
-~/crossbot/scripts/auto-update.sh --restart
+~/hermes-crossbot-telegram/scripts/auto-update.sh --restart
 ```
 
 ---
@@ -68,7 +68,7 @@ Atualiza o crossbot neste servidor: puxa a versão nova do GitHub, reinstala o p
 ```
 Quero que o crossbot se atualize sozinho todo dia de madrugada. Configura a rotina automática e me confirma que ficou agendada. Se der, roda um teste manual uma vez para ver se funciona.
 
-~/crossbot/scripts/setup-auto-update-cron.sh
+~/hermes-crossbot-telegram/scripts/setup-auto-update-cron.sh
 ```
 
 ---
@@ -78,7 +78,7 @@ Quero que o crossbot se atualize sozinho todo dia de madrugada. Configura a roti
 ```
 Roda um teste de telefone sem fio entre os bots do crossbot com a frase "O rato roeu a roupa do rei de Roma". Me diz quem recebeu, se apareceu no Telegram e se algum bot ficou sem responder.
 
-PHRASE="O rato roeu a roupa do rei de Roma" ~/crossbot/scripts/telefone-sem-fio.sh
+PHRASE="O rato roeu a roupa do rei de Roma" ~/hermes-crossbot-telegram/scripts/telefone-sem-fio.sh
 ```
 
 ---

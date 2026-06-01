@@ -12,9 +12,9 @@ Execute este documento **do início ao fim**. Ao terminar, preencha o [template 
 ## 1. Pull e deploy
 
 ```bash
-cd ~/crossbot && git pull
+cd ~/hermes-crossbot-telegram && git pull
 
-grep '^version:' ~/crossbot/plugins/crossbot/plugin.yaml
+grep '^version:' ~/hermes-crossbot-telegram/plugins/crossbot/plugin.yaml
 # Esperado: 0.5.0 (pré-release)
 
 chmod +x scripts/install.sh
@@ -162,7 +162,7 @@ Copie, preencha e envie ao operador humano:
 ## Handoff deploy — feedback
 
 **Data:**
-**Commit:** $(cd ~/crossbot && git log -1 --oneline)
+**Commit:** $(cd ~/hermes-crossbot-telegram && git log -1 --oneline)
 **Ambiente:** (descreva brevemente)
 
 ### Deploy

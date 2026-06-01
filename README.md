@@ -14,11 +14,11 @@ Mande isso no chat do bot que tem terminal (não precisa explicar técnico):
 ```
 Preciso que você instale o crossbot aqui no servidor — é o plugin que faz os bots conversarem entre si no Telegram.
 
-Baixe o projeto do GitHub (franklinbravos/crossbot), rode a instalação completa e não pare no meio. Se já existia a versão antiga (kanban-context ou multi-agent-context), limpe isso e deixe só o crossbot.
+Baixe o projeto do GitHub (franklinbravos/hermes-crossbot-telegram), rode a instalação completa e não pare no meio. Se já existia a versão antiga (kanban-context ou multi-agent-context), limpe isso e deixe só o crossbot.
 
 No final me diga se deu certo, quais bots foram configurados e se o gateway reiniciou.
 
-bash -c 'set -euo pipefail; CB="${CROSSBOT_HOME:-$HOME/crossbot}"; if [ -d "$CB/.git" ]; then git -C "$CB" pull --ff-only; else git clone https://github.com/franklinbravos/crossbot.git "$CB"; fi; chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh; "$CB"/scripts/bootstrap.sh --yes'
+bash -c 'set -euo pipefail; CB="${CROSSBOT_HOME:-$HOME/hermes-crossbot-telegram}"; if [ -d "$CB/.git" ]; then git -C "$CB" pull --ff-only; else git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git "$CB"; fi; chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh; "$CB"/scripts/bootstrap.sh --yes'
 ```
 
 Mais mensagens prontas (atualizar, teste, auto-update): [HERMES-INSTALL-PROMPT.md](./docs/onboarding/HERMES-INSTALL-PROMPT.md)
@@ -28,8 +28,8 @@ Mais mensagens prontas (atualizar, teste, auto-update): [HERMES-INSTALL-PROMPT.m
 ## Instalação manual (terminal)
 
 ```bash
-git clone https://github.com/franklinbravos/crossbot.git ~/crossbot
-cd ~/crossbot
+git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git ~/hermes-crossbot-telegram
+cd ~/hermes-crossbot-telegram
 ./scripts/bootstrap.sh --yes
 ```
 
@@ -47,8 +47,8 @@ Com chat_id e roster conhecidos:
 ## Auto-atualização
 
 ```bash
-~/crossbot/scripts/setup-auto-update-cron.sh   # cron diário
-~/crossbot/scripts/auto-update.sh --restart    # manual
+~/hermes-crossbot-telegram/scripts/setup-auto-update-cron.sh   # cron diário
+~/hermes-crossbot-telegram/scripts/auto-update.sh --restart    # manual
 ```
 
 O auto-update faz `git pull`, reinstala o plugin, migra legado e opcionalmente reinicia o gateway. Logs: `~/.hermes/logs/crossbot/auto-update.log`.
@@ -71,7 +71,7 @@ Incorpora **kanban-context** (Franklin Bravos) e **multi-agent-context** (Kaishi
 ## Teste
 
 ```bash
-PHRASE="O rato roeu" ~/crossbot/scripts/telefone-sem-fio.sh
+PHRASE="O rato roeu" ~/hermes-crossbot-telegram/scripts/telefone-sem-fio.sh
 ```
 
 → [docs/onboarding/05-telefone-sem-fio.md](./docs/onboarding/05-telefone-sem-fio.md)
@@ -112,7 +112,7 @@ O **bootstrap** e o **install.sh cross-bot** removem automaticamente:
 - Entradas legadas em `config.yaml` → substituídas por `crossbot`
 - `.env`: adiciona `CROSSBOT_BOT_NAME` e `CROSSBOT_DB_PATH` se faltarem
 
-Repo antigo `hermes-community-plugins` → renomeie remote para `crossbot` ou clone fresh em `~/crossbot`.
+Repo antigo `hermes-community-plugins` → renomeie remote para `hermes-crossbot-telegram` ou clone fresh em `~/hermes-crossbot-telegram`.
 
 ---
 

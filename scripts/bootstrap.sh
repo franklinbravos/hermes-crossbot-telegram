@@ -8,8 +8,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CROSSBOT_REPO="${CROSSBOT_REPO:-https://github.com/franklinbravos/crossbot.git}"
-CROSSBOT_HOME="${CROSSBOT_HOME:-${HOME}/crossbot}"
+CROSSBOT_REPO="${CROSSBOT_REPO:-https://github.com/franklinbravos/hermes-crossbot-telegram.git}"
+CROSSBOT_HOME="${CROSSBOT_HOME:-${HOME}/hermes-crossbot-telegram}"
 ASSUME_YES=false
 CHAT_ID=""
 ORCHESTRATOR=""
@@ -32,8 +32,8 @@ Options:
   --chat-id ID          Telegram forum chat_id
   --orchestrator NAME   Orchestrator profile
   --players a,b,c       Comma-separated player profiles
-  --home DIR            Clone/update directory (default: ~/crossbot)
-  --repo URL            Git remote (default: github.com/franklinbravos/crossbot)
+  --home DIR            Clone/update directory (default: ~/hermes-crossbot-telegram)
+  --repo URL            Git remote (default: github.com/franklinbravos/hermes-crossbot-telegram)
   --update-only         Pull + reinstall + migrate (skip configure if topic-map exists)
   --skip-configure      Skip configure-crossbot.sh
   --skip-board          Skip setup-crossbot-board.sh

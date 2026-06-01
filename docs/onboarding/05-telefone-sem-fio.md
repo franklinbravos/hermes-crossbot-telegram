@@ -46,7 +46,7 @@ O script lê o **roster** de `topic-map.json` (todos os profiles exceto o orches
 
 **Frase para pedir ao bot orchestrator no chat:**
 
-> Roda telefone sem fio: `PHRASE="O rato roeu" ~/crossbot/scripts/telefone-sem-fio.sh`
+> Roda telefone sem fio: `PHRASE="O rato roeu" ~/hermes-crossbot-telegram/scripts/telefone-sem-fio.sh`
 
 **Acompanhar:**
 
