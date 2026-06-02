@@ -25,39 +25,34 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 TASKS_DIR = Path.home() / ".hermes" / "async-tasks"
 MAX_OUTPUT_CHARS = 8000
-TASK_TIMEOUT_SECS = 1800  # 30 min — mark as timed out after this
-CLEANUP_MAX_AGE_SECS = 86400  # 24 hrs — delete task files after this
+TASK_TIMEOUT_SECS = 1800
+CLEANUP_MAX_AGE_SECS = 86400
+DEFAULT_INJECT_MODE = "queue"
+WATCHER_POLL_SECS = 5
+CLEANUP_INTERVAL_SECS = 300
+INJECT_TIMEOUT_SECS = 15
+PRE_LLM_THROTTLE = 5
+ASYNC_DEFAULT_TOOLSETS = "web,terminal,file,browser,vision"
 
-# ---------------------------------------------------------------------------
-# Module-level state — populated by pre_gateway_dispatch hook
-# ---------------------------------------------------------------------------
-
-# The GatewayRunner instance (captured from first dispatch)
-_gateway_runner = None
-
-# The gateway's event loop (captured in capture_routing which runs on the gateway thread)
-_gateway_loop = None
-
-# Per-task routing info: task_id -> {platform, chat_id, thread_id, user_id, user_name, session_key}
+_gateway_runner: Any = None
+_gateway_loop: Any = None
 _task_routing: Dict[str, dict] = {}
-
-# Lock for thread-safe access to _task_routing
 _routing_lock = threading.Lock()
-
-# The watcher thread reference
 _watcher_thread: Optional[threading.Thread] = None
 _watcher_stop = threading.Event()
+_running_procs: Dict[str, subprocess.Popen] = {}
+_running_procs_lock = threading.Lock()
 
+_last_cleanup: float = 0
+_processed_tasks: set = set()
+_pre_llm_counter: int = 0
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _meta_path(task_id: str) -> Path:
     return TASKS_DIR / f"{task_id}.json"
@@ -90,10 +85,12 @@ def _write_meta(task_id: str, meta: dict) -> None:
 
 
 def _find_hermes() -> str:
-    """Locate the hermes executable."""
     hermes = shutil.which("hermes")
     if hermes:
         return hermes
+    hermes_env = os.environ.get("HERMES_BIN_PATH", "")
+    if hermes_env and Path(hermes_env).exists():
+        return hermes_env
     for candidate in [
         "/root/.local/bin/hermes",
         "/usr/local/bin/hermes",
@@ -101,27 +98,53 @@ def _find_hermes() -> str:
     ]:
         if Path(candidate).exists():
             return candidate
-    return "hermes"  # last resort
+    return "hermes"
 
 
-# ---------------------------------------------------------------------------
-# Session injection — dual mode (queue / steer)
-# ---------------------------------------------------------------------------
+def _cleanup_old_tasks(now: float) -> None:
+    if not TASKS_DIR.exists():
+        return
+    for meta_file in list(TASKS_DIR.glob("async_*.json")):
+        try:
+            meta = json.loads(meta_file.read_text())
+            task_id = meta.get("task_id", "")
+            age = now - meta.get("spawned_at", 0)
+            if age > CLEANUP_MAX_AGE_SECS:
+                for p in [
+                    _meta_path(task_id),
+                    _output_path(task_id),
+                    _done_path(task_id),
+                    _err_path(task_id),
+                    TASKS_DIR / f"{task_id}.prompt",
+                    TASKS_DIR / f"{task_id}.sh",
+                ]:
+                    p.unlink(missing_ok=True)
+                with _running_procs_lock:
+                    _running_procs.pop(task_id, None)
+                logger.info("async-delegate: cleaned up stale task %s", task_id)
+        except Exception:
+            continue
+
+
+def _reap_timed_out_procs() -> None:
+    now = time.time()
+    with _running_procs_lock:
+        for task_id, proc in list(_running_procs.items()):
+            meta = _read_meta(task_id)
+            if meta and meta.get("status") == "timeout":
+                try:
+                    proc.kill()
+                    logger.info("async-delegate: killed timed-out process %s (PID %d)", task_id, proc.pid)
+                except Exception:
+                    pass
+                _running_procs.pop(task_id, None)
+
 
 def _inject_task_notification(task_id: str, meta: dict, exit_code: str) -> None:
-    """Inject a task completion notification into the originating session.
-
-    Dual-mode injection:
-      - "steer": interleaves into the agent's current tool loop (no interrupt).
-        The agent sees the result between tool batches and can adjust course.
-      - "queue": queues behind the current turn (no interrupt).
-        Delivered as a clean new turn after the current one finishes.
-      - If session is not busy: processes immediately as a new turn.
-    """
     global _gateway_runner
 
     if not _gateway_runner:
-        logger.warning("async-delegate: no gateway_runner captured, cannot inject — _gateway_runner=%s", _gateway_runner)
+        logger.warning("async-delegate: no gateway_runner captured, cannot inject")
         return
 
     routing = meta.get("_routing")
@@ -134,56 +157,57 @@ def _inject_task_notification(task_id: str, meta: dict, exit_code: str) -> None:
     thread_id = routing.get("thread_id")
     user_id = routing.get("user_id")
     user_name = routing.get("user_name")
-    inject_mode = meta.get("inject_mode", "queue")  # default to queue
+    inject_mode = meta.get("inject_mode", DEFAULT_INJECT_MODE)
 
     if not platform_str or not chat_id:
         logger.warning("async-delegate: task %s missing platform/chat_id in routing", task_id)
         return
 
-    # Build the synthetic notification text
-    status_label = "✅ Completed" if exit_code == "0" else f"❌ Failed (exit {exit_code})"
+    status_label = "Completed" if exit_code == "0" else "Failed (exit %s)".format(exit_code)
     out_file = _output_path(task_id)
-    goal = meta.get("goal", "unknown")[:100]
+    goal = (meta.get("goal", "unknown") or "")[:100]
 
     synth_text = (
-        f"[Async Task Done: {task_id}] {status_label} — "
-        f"Goal: {goal} — "
-        f"Result file: {out_file}"
+        "[Async Task Done: %s] %s — "
+        "Goal: %s — "
+        "Result file: %s"
+    ) % (task_id, status_label, goal, out_file)
+
+    logger.info(
+        "async-delegate: injecting notification for %s (mode=%s) into %s chat=%s thread=%s",
+        task_id, inject_mode, platform_str, chat_id, thread_id,
     )
 
-    logger.info("async-delegate: injecting notification for %s (mode=%s) into %s chat=%s thread=%s",
-                task_id, inject_mode, platform_str, chat_id, thread_id)
-
     try:
-        # Import gateway types
         from gateway.session import SessionSource, build_session_key
         from gateway.platforms.base import MessageEvent, MessageType, merge_pending_message_event
         from gateway.config import Platform
 
-        # Resolve Platform enum
-        platform_enum = None
-        try:
-            platform_enum = Platform(platform_str)
-        except ValueError:
-            for p in Platform:
-                if p.value == platform_str:
-                    platform_enum = p
-                    break
-        if not platform_enum:
-            logger.error("async-delegate: unknown platform '%s'", platform_str)
-            return
+        # Resolve source from stored routing
+        source_data = routing.get("_source")
+        if source_data:
+            source = SessionSource(**source_data)
+        else:
+            platform_enum = None
+            try:
+                platform_enum = Platform(platform_str)
+            except ValueError:
+                for p in Platform:
+                    if p.value == platform_str:
+                        platform_enum = p
+                        break
+            if not platform_enum:
+                logger.error("async-delegate: unknown platform '%s'", platform_str)
+                return
+            source = SessionSource(
+                platform=platform_enum,
+                chat_id=chat_id,
+                chat_type=routing.get("chat_type", "group"),
+                user_id=user_id,
+                user_name=user_name or "system",
+                thread_id=thread_id,
+            )
 
-        # Build SessionSource
-        source = SessionSource(
-            platform=platform_enum,
-            chat_id=chat_id,
-            chat_type=routing.get("chat_type", "group"),
-            user_id=user_id,
-            user_name=user_name or "system",
-            thread_id=thread_id,
-        )
-
-        # Build synthetic MessageEvent (internal=True bypasses auth)
         synth_event = MessageEvent(
             text=synth_text,
             message_type=MessageType.TEXT,
@@ -191,7 +215,6 @@ def _inject_task_notification(task_id: str, meta: dict, exit_code: str) -> None:
             internal=True,
         )
 
-        # Find the adapter for this platform
         adapter = None
         for p, a in _gateway_runner.adapters.items():
             p_val = p.value if hasattr(p, "value") else str(p)
@@ -208,10 +231,6 @@ def _inject_task_notification(task_id: str, meta: dict, exit_code: str) -> None:
             logger.error("async-delegate: no event loop available for injection")
             return
 
-        # Build the session key using the GATEWAY's own function — 
-        # our hand-built routing["session_key"] format is wrong for groups!
-        # Gateway uses: agent:main:{platform}:group:{chat_id}:{thread_id}
-        # We were using: {platform}:{chat_id}:{thread_id}:{user_id} ← WRONG
         try:
             session_key = build_session_key(source)
         except Exception:
@@ -220,11 +239,9 @@ def _inject_task_notification(task_id: str, meta: dict, exit_code: str) -> None:
             logger.error("async-delegate: could not build session_key for %s", task_id)
             return
 
-        # --- STEER MODE: inject into running agent's tool loop ---
         if inject_mode == "steer":
-            running_agent = _gateway_runner._running_agents.get(session_key)
-            if running_agent and running_agent is not None and hasattr(running_agent, "steer"):
-                # Build a richer steer text with result preview
+            running_agent = _gateway_runner._running_agents.get(session_key) if hasattr(_gateway_runner, "_running_agents") else None
+            if running_agent and hasattr(running_agent, "steer"):
                 result_preview = ""
                 out_path = _output_path(task_id)
                 if out_path.exists():
@@ -234,86 +251,87 @@ def _inject_task_notification(task_id: str, meta: dict, exit_code: str) -> None:
                         pass
 
                 steer_text = (
-                    f"[Async Task Done: {task_id}] {status_label}\n"
-                    f"Goal: {goal}\n"
-                    f"Result file: {out_file}\n"
-                )
+                    "[Async Task Done: %s] %s\n"
+                    "Goal: %s\n"
+                    "Result file: %s\n"
+                ) % (task_id, status_label, goal, out_file)
                 if result_preview:
-                    steer_text += f"Preview:\n{result_preview}\n"
+                    steer_text += "Preview:\n%s\n" % result_preview
                 steer_text += "— Process this result and incorporate it into your current work."
 
                 steered = bool(running_agent.steer(steer_text))
                 if steered:
-                    logger.info("async-delegate: STEERED notification for %s into running agent", task_id)
+                    logger.info("async-delegate: steered notification for %s into running agent", task_id)
                     return
-                else:
-                    logger.warning("async-delegate: steer() failed for %s, falling back to queue", task_id)
-                    # Fall through to queue mode
+                logger.warning("async-delegate: steer() failed for %s, falling back to queue", task_id)
             else:
                 logger.info("async-delegate: no running agent for steer, falling back to queue for %s", task_id)
-                # Fall through to queue mode
 
-        # --- QUEUE / DEFAULT MODE: non-interrupting delivery ---
-        # Schedule on the event loop to check busy state and queue appropriately
         async def _async_inject():
-            # Check if session is currently busy
-            is_busy = session_key in adapter._active_sessions
-
+            is_busy = False
+            try:
+                is_busy = session_key in adapter._active_sessions
+            except Exception:
+                pass
             if is_busy:
-                # Queue behind current turn — same pattern as photo handling
-                merge_pending_message_event(adapter._pending_messages, session_key, synth_event)
-                logger.info("async-delegate: QUEUED notification for %s behind active turn", task_id)
+                try:
+                    merge_pending_message_event(adapter._pending_messages, session_key, synth_event)
+                    logger.info("async-delegate: queued notification for %s behind active turn", task_id)
+                except Exception:
+                    await adapter.handle_message(synth_event)
+                    logger.info("async-delegate: delivered notification for %s as new turn (fallback)", task_id)
             else:
-                # Session is free — process as a normal new turn
                 await adapter.handle_message(synth_event)
-                logger.info("async-delegate: DELIVERED notification for %s as new turn", task_id)
+                logger.info("async-delegate: delivered notification for %s as new turn", task_id)
 
-        future = asyncio.run_coroutine_threadsafe(_async_inject(), loop)
-        # Wait for it with a timeout (don't hang the watcher thread)
-        future.result(timeout=15)
-
-        logger.info("async-delegate: injection complete for %s (mode=%s)", task_id, inject_mode)
+        if loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(_async_inject(), loop)
+            try:
+                future.result(timeout=INJECT_TIMEOUT_SECS)
+            except TimeoutError:
+                logger.warning("async-delegate: injection timed out for %s (gateway loop busy)", task_id)
+            except Exception as e:
+                logger.error("async-delegate: injection future failed for %s: %s", task_id, e)
+        else:
+            logger.warning("async-delegate: gateway loop not running, cannot inject %s", task_id)
 
     except Exception as e:
         logger.error("async-delegate: injection failed for %s: %s", task_id, e)
 
 
-# ---------------------------------------------------------------------------
-# Background watcher thread
-# ---------------------------------------------------------------------------
-
 def _watcher_loop() -> None:
-    """Background thread: poll for .done files and inject notifications."""
+    global _last_cleanup
     logger.info("async-delegate: watcher thread started")
 
     while not _watcher_stop.is_set():
         try:
+            now = time.time()
+
+            if now - _last_cleanup > CLEANUP_INTERVAL_SECS:
+                _cleanup_old_tasks(now)
+                _reap_timed_out_procs()
+                _last_cleanup = now
+
             if not TASKS_DIR.exists():
-                _watcher_stop.wait(5)
+                _watcher_stop.wait(WATCHER_POLL_SECS)
                 continue
 
-            now = time.time()
             for done_file in list(TASKS_DIR.glob("async_*.done")):
-                task_id = done_file.stem  # e.g. "async_abcdef12"
+                task_id = done_file.stem
                 meta = _read_meta(task_id)
                 if not meta:
                     continue
-
-                # Only process tasks still marked as running
                 if meta.get("status") != "running":
                     continue
 
-                # Check routing: in-memory dict first, then fall back to JSON _routing
                 with _routing_lock:
                     routing = _task_routing.get(task_id)
-
                 if not routing:
                     routing = meta.get("_routing")
                     if routing:
-                        logger.info("async-delegate: watcher using _routing from JSON for %s (not in _task_routing)", task_id)
-
+                        logger.info("async-delegate: watcher using _routing from JSON for %s", task_id)
                 if not routing:
-                    logger.warning("async-delegate: watcher skipping %s — no routing info anywhere", task_id)
+                    logger.warning("async-delegate: watcher skipping %s — no routing info", task_id)
                     continue
 
                 exit_code = done_file.read_text().strip()
@@ -322,23 +340,22 @@ def _watcher_loop() -> None:
                 meta["completed_at"] = now
                 _write_meta(task_id, meta)
 
-                # Inject the notification!
                 _inject_task_notification(task_id, meta, exit_code)
 
-                # Clean up routing entry
                 with _routing_lock:
                     _task_routing.pop(task_id, None)
+                with _running_procs_lock:
+                    _running_procs.pop(task_id, None)
 
         except Exception as e:
             logger.error("async-delegate: watcher error: %s", e)
 
-        _watcher_stop.wait(5)  # Poll every 5 seconds
+        _watcher_stop.wait(WATCHER_POLL_SECS)
 
     logger.info("async-delegate: watcher thread stopped")
 
 
 def _ensure_watcher() -> None:
-    """Start the background watcher thread if not already running."""
     global _watcher_thread
     if _watcher_thread and _watcher_thread.is_alive():
         return
@@ -351,39 +368,38 @@ def _ensure_watcher() -> None:
     _watcher_thread.start()
 
 
-# ---------------------------------------------------------------------------
-# Tool: delegate_async
-# ---------------------------------------------------------------------------
-
-# Default toolsets for async subagents — covers the common use cases while
-# keeping startup fast (~10s vs 30+ with everything loaded).
-_ASYNC_DEFAULT_TOOLSETS = "web,terminal,file,browser,vision"
+def _stop_watcher() -> None:
+    if _watcher_thread and _watcher_thread.is_alive():
+        _watcher_stop.set()
+        _watcher_thread.join(timeout=3)
+        logger.info("async-delegate: watcher thread stopped")
 
 
-def delegate_async_tool(goal: str, context: str = "", inject_mode: str = "queue", toolsets: str = "") -> str:
-    """Spawn a background subagent and return immediately."""
+def delegate_async_tool(
+    goal: str,
+    context: str = "",
+    inject_mode: str = DEFAULT_INJECT_MODE,
+    toolsets: str = "",
+    routing: Optional[Dict[str, str]] = None,
+) -> str:
     TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Validate inject_mode
     if inject_mode not in ("queue", "steer"):
-        inject_mode = "queue"
+        inject_mode = DEFAULT_INJECT_MODE
 
-    # Resolve toolsets — use provided or fall back to sensible default
-    resolved_toolsets = toolsets.strip() if toolsets.strip() else _ASYNC_DEFAULT_TOOLSETS
+    resolved_toolsets = toolsets.strip() if toolsets.strip() else ASYNC_DEFAULT_TOOLSETS
 
-    task_id = f"async_{uuid.uuid4().hex[:8]}"
+    task_id = "async_%s" % uuid.uuid4().hex[:8]
 
-    # Build prompt for the subagent
     prompt = goal
     if context:
-        prompt = f"{goal}\n\nAdditional context:\n{context}"
+        prompt = "%s\n\nAdditional context:\n%s" % (goal, context)
     prompt += (
         "\n\nIMPORTANT: Do NOT use the delegate_async or delegate_task tool. "
         "Complete this task yourself using your own tools."
     )
 
-    # Write initial metadata
-    meta = {
+    meta: Dict[str, Any] = {
         "task_id": task_id,
         "goal": goal[:500],
         "status": "running",
@@ -391,48 +407,53 @@ def delegate_async_tool(goal: str, context: str = "", inject_mode: str = "queue"
         "inject_mode": inject_mode,
         "toolsets": resolved_toolsets,
     }
-    _write_meta(task_id, meta)
 
-    # Write prompt to a file to avoid shell quoting issues
-    prompt_file = TASKS_DIR / f"{task_id}.prompt"
+    prompt_file = TASKS_DIR / "%s.prompt" % task_id
     prompt_file.write_text(prompt)
 
-    # Write a wrapper bash script
     out_file = _output_path(task_id)
     done_file = _done_path(task_id)
     err_file = _err_path(task_id)
     hermes_bin = _find_hermes()
 
-    wrapper_script = TASKS_DIR / f"{task_id}.sh"
+    wrapper_script = TASKS_DIR / "%s.sh" % task_id
     wrapper_script.write_text(
-        f'#!/bin/bash\n'
-        f'PROMPT=$(cat "{prompt_file}")\n'
-        f'"{hermes_bin}" chat -q "$PROMPT" -Q -t "{resolved_toolsets}" >"{out_file}" 2>"{err_file}"\n'
-        f'echo $? >"{done_file}"\n'
-    )
+        '#!/bin/bash\n'
+        'PROMPT=$(cat "%s")\n'
+        '"%s" chat -q "$PROMPT" -Q -t "%s" >"%s" 2>"%s"\n'
+        'echo $? >"%s"\n'
+    ) % (prompt_file, hermes_bin, resolved_toolsets, out_file, err_file, done_file)
     wrapper_script.chmod(0o755)
 
-    proc = subprocess.Popen(
-        ["bash", str(wrapper_script)],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    try:
+        proc = subprocess.Popen(
+            ["bash", str(wrapper_script)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        meta["pid"] = proc.pid
+        with _running_procs_lock:
+            _running_procs[task_id] = proc
+    except OSError as e:
+        meta["status"] = "failed"
+        meta["error"] = "failed to spawn subprocess: %s" % e
+        _write_meta(task_id, meta)
+        return json.dumps({
+            "task_id": task_id,
+            "status": "failed",
+            "error": meta["error"],
+        })
 
-    meta["pid"] = proc.pid
-
-    # Attach current session routing info so the watcher can inject notifications
-    global _latest_routing
-    if _latest_routing:
-        meta["_routing"] = _latest_routing
-        # Also store in the module-level routing dict for quick lookup
+    if routing:
+        meta["_routing"] = routing
         with _routing_lock:
-            _task_routing[task_id] = _latest_routing
+            _task_routing[task_id] = routing
 
     _write_meta(task_id, meta)
 
-    logger.info(f"async-delegate: spawned {task_id} (PID {proc.pid}, mode={inject_mode})")
+    logger.info("async-delegate: spawned %s (PID %d, mode=%s)", task_id, proc.pid, inject_mode)
 
     return json.dumps({
         "task_id": task_id,
@@ -440,31 +461,24 @@ def delegate_async_tool(goal: str, context: str = "", inject_mode: str = "queue"
         "inject_mode": inject_mode,
         "toolsets": resolved_toolsets,
         "message": (
-            f"Async task `{task_id}` spawned in background (mode: {inject_mode}, toolsets: {resolved_toolsets}). "
+            "Async task `%s` spawned in background (mode: %s, toolsets: %s). "
             "I will be notified when it completes and can process the results. "
             "You can continue chatting with me in the meantime!"
-        ),
+        ) % (task_id, inject_mode, resolved_toolsets),
     })
 
 
-# ---------------------------------------------------------------------------
-# Tool: check_async_tasks
-# ---------------------------------------------------------------------------
-
 def check_async_tasks_tool(task_id: str = "") -> str:
-    """Check status of async delegated tasks."""
     TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
     if task_id:
         meta = _read_meta(task_id)
         if meta is None:
-            return json.dumps({"error": f"Task {task_id} not found"})
+            return json.dumps({"error": "Task %s not found" % task_id})
 
-        # Refresh status from disk
         _refresh_status(task_id, meta)
         _write_meta(task_id, meta)
 
-        # Include output preview for completed tasks
         if meta.get("status") in ("completed", "failed"):
             out = _output_path(task_id)
             if out.exists():
@@ -472,7 +486,6 @@ def check_async_tasks_tool(task_id: str = "") -> str:
 
         return json.dumps(meta, indent=2)
 
-    # List all tasks
     tasks = []
     for meta_file in sorted(TASKS_DIR.glob("async_*.json")):
         try:
@@ -480,9 +493,9 @@ def check_async_tasks_tool(task_id: str = "") -> str:
             _refresh_status(meta["task_id"], meta)
             tasks.append({
                 "task_id": meta["task_id"],
-                "goal": meta.get("goal", "")[:100],
+                "goal": (meta.get("goal", "") or "")[:100],
                 "status": meta.get("status", "unknown"),
-                "inject_mode": meta.get("inject_mode", "queue"),
+                "inject_mode": meta.get("inject_mode", DEFAULT_INJECT_MODE),
                 "spawned_at": meta.get("spawned_at"),
             })
         except Exception:
@@ -492,7 +505,6 @@ def check_async_tasks_tool(task_id: str = "") -> str:
 
 
 def _refresh_status(task_id: str, meta: dict) -> None:
-    """Update meta status from on-disk markers."""
     if meta.get("status") != "running":
         return
 
@@ -504,45 +516,27 @@ def _refresh_status(task_id: str, meta: dict) -> None:
         meta["completed_at"] = time.time()
         return
 
-    # Check for timeout
     elapsed = time.time() - meta.get("spawned_at", 0)
     if elapsed > TASK_TIMEOUT_SECS:
         meta["status"] = "timeout"
         meta["completed_at"] = time.time()
-        logger.warning(f"async-delegate: task {task_id} timed out after {int(elapsed)}s")
+        logger.warning("async-delegate: task %s timed out after %ds", task_id, int(elapsed))
 
-
-# ---------------------------------------------------------------------------
-# Hook: pre_gateway_dispatch — capture gateway runner + session routing
-# ---------------------------------------------------------------------------
 
 def capture_routing(**kwargs) -> Optional[Dict[str, str]]:
-
-    """Capture the GatewayRunner and session routing info from every dispatch.
-
-    This hook fires on EVERY incoming message. We use it to:
-    1. Grab the gateway_runner reference (first time only)
-    2. Store routing info that async tasks can use to inject notifications
-    """
     global _gateway_runner
 
     event = kwargs.get("event")
     gateway = kwargs.get("gateway")
 
-    # Capture the gateway runner and event loop
     global _gateway_runner, _gateway_loop
     if gateway and not _gateway_runner:
         _gateway_runner = gateway
         try:
-            import asyncio as _asyncio
-            _gateway_loop = _asyncio.get_running_loop()
+            _gateway_loop = asyncio.get_running_loop()
             logger.info("async-delegate: captured GatewayRunner + event loop")
         except RuntimeError:
-            try:
-                _gateway_loop = _asyncio.get_event_loop()
-            except Exception:
-                pass
-            logger.info("async-delegate: captured GatewayRunner (loop via fallback)")
+            logger.info("async-delegate: captured GatewayRunner (no running loop at boot)")
         _ensure_watcher()
 
     if not event:
@@ -552,54 +546,41 @@ def capture_routing(**kwargs) -> Optional[Dict[str, str]]:
     if not source:
         return None
 
-    # Build routing info from the current message's source
-    routing = {
+    source_dict = {
         "platform": source.platform.value if hasattr(source.platform, "value") else str(source.platform),
         "chat_id": source.chat_id or "",
         "chat_type": source.chat_type or "dm",
-        "thread_id": source.thread_id,
         "user_id": source.user_id,
         "user_name": source.user_name,
+        "thread_id": source.thread_id,
     }
 
-    # Build session_key from source (same format gateway uses)
-    session_store = kwargs.get("session_store")
-    if session_store and source:
-        try:
-            platform_val = source.platform.value if hasattr(source.platform, "value") else str(source.platform)
-            chat_id = source.chat_id or ""
-            thread_id = source.thread_id or ""
-            user_id = source.user_id or ""
-            parts = [platform_val, chat_id]
-            if thread_id:
-                parts.append(thread_id)
-            parts.append(user_id)
-            routing["session_key"] = ":".join(parts)
-        except Exception:
-            pass
+    routing: Dict[str, str] = {
+        "platform": source_dict["platform"],
+        "chat_id": source_dict["chat_id"],
+        "chat_type": source_dict["chat_type"],
+        "thread_id": source_dict["thread_id"],
+        "user_id": source_dict["user_id"] or "",
+        "user_name": source_dict["user_name"] or "",
+        "_source": source_dict,
+    }
 
-    # Store globally for delegate_async_tool to attach to spawned tasks
-    global _latest_routing
-    _latest_routing = routing
+    with _routing_lock:
+        _task_routing["_latest"] = routing
 
-    return None  # Don't modify the event
+    return None
 
-
-# Global for the most recent routing info (written by capture_routing, read by delegate_async_tool)
-_latest_routing: Optional[dict] = None
-
-
-# ---------------------------------------------------------------------------
-# Hook: pre_llm_call — fallback: inject completed results into context
-# ---------------------------------------------------------------------------
 
 def pre_llm_inject_results(**kwargs) -> Optional[Dict[str, str]]:
-    """Fallback: inject completed async task results into conversation context.
+    global _pre_llm_counter
+    _pre_llm_counter += 1
+    if _pre_llm_counter % PRE_LLM_THROTTLE != 0:
+        return None
 
-    This serves as a safety net in case the watcher thread injection fails
-    or the task completes while the agent is already in a turn.
-    """
     if not TASKS_DIR.exists():
+        return None
+
+    if not list(TASKS_DIR.glob("async_*.json")):
         return None
 
     now = time.time()
@@ -610,49 +591,48 @@ def pre_llm_inject_results(**kwargs) -> Optional[Dict[str, str]]:
             meta = json.loads(meta_file.read_text())
             task_id = meta.get("task_id", "")
 
-            # Only process tasks that are still marked running
+            if task_id in _processed_tasks:
+                continue
+
             if meta.get("status") != "running":
+                _processed_tasks.add(task_id)
                 continue
 
             done_file = _done_path(task_id)
             if not done_file.exists():
-                # Check timeout
                 if now - meta.get("spawned_at", 0) > TASK_TIMEOUT_SECS:
                     meta["status"] = "timeout"
                     meta["completed_at"] = now
                     _write_meta(task_id, meta)
                     completed_results.append(
-                        f"[Async Task Timed Out: {task_id}] "
-                        f"Goal: {meta.get('goal', 'unknown')[:100]} "
-                        f"(ran >{TASK_TIMEOUT_SECS // 60}min)"
-                    )
+                        "[Async Task Timed Out: %s] "
+                        "Goal: %s "
+                        "(ran >%dmin)"
+                    ) % (task_id, (meta.get("goal", "unknown") or "")[:100], TASK_TIMEOUT_SECS // 60)
+                    _processed_tasks.add(task_id)
                 continue
 
-            # Task just completed!
             exit_code = done_file.read_text().strip()
-            out_file = _output_path(task_id)
-
             meta["status"] = "completed" if exit_code == "0" else "failed"
             meta["exit_code"] = exit_code
             meta["completed_at"] = now
-
             _write_meta(task_id, meta)
+            _processed_tasks.add(task_id)
 
-            status_label = "✅ Completed" if exit_code == "0" else f"❌ Failed (exit {exit_code})"
+            status_label = "Completed" if exit_code == "0" else "Failed (exit %s)".format(exit_code)
 
-            # SMALL PING ONLY — do NOT dump full output into context!
             result_text = (
-                f"[Async Task Done: {task_id}] "
-                f"{status_label} — "
-                f"Goal: {meta.get('goal', 'unknown')[:100]} — "
-                f"Result file: {out_file} "
-            )
+                "[Async Task Done: %s] "
+                "%s — "
+                "Goal: %s — "
+                "Result file: %s"
+            ) % (task_id, status_label, (meta.get("goal", "unknown") or "")[:100], _output_path(task_id))
 
             completed_results.append(result_text)
-            logger.info(f"async-delegate: {task_id} completed (exit={exit_code}) — via pre_llm fallback")
+            logger.info("async-delegate: %s completed (exit=%s) via pre_llm fallback", task_id, exit_code)
 
         except Exception as e:
-            logger.warning(f"async-delegate: error in pre_llm hook: {e}")
+            logger.warning("async-delegate: error in pre_llm hook: %s", e)
             continue
 
     if not completed_results:
@@ -662,59 +642,29 @@ def pre_llm_inject_results(**kwargs) -> Optional[Dict[str, str]]:
     context = (
         "[Async Delegate — Tasks Done]\n"
         "One or more background tasks finished. Read result files with read_file if needed.\n"
-        f"{ping_lines}\n"
-    )
+        "%s\n"
+    ) % ping_lines
     return {"context": context}
 
 
-# ---------------------------------------------------------------------------
-# Hook: on_session_end — cleanup stale tasks
-# ---------------------------------------------------------------------------
-
 def cleanup_stale_tasks(**kwargs) -> None:
-    """Remove task files older than 24 hours."""
-    if not TASKS_DIR.exists():
-        return
+    _cleanup_old_tasks(time.time())
 
-    now = time.time()
-
-    for meta_file in list(TASKS_DIR.glob("async_*.json")):
-        try:
-            meta = json.loads(meta_file.read_text())
-            task_id = meta.get("task_id", "")
-            age = now - meta.get("spawned_at", 0)
-
-            if age > CLEANUP_MAX_AGE_SECS:
-                for p in [
-                    _meta_path(task_id),
-                    _output_path(task_id),
-                    _done_path(task_id),
-                    _err_path(task_id),
-                    TASKS_DIR / f"{task_id}.prompt",
-                    TASKS_DIR / f"{task_id}.sh",
-                ]:
-                    p.unlink(missing_ok=True)
-                logger.info(f"async-delegate: cleaned up stale task {task_id}")
-        except Exception:
-            continue
-
-
-# ---------------------------------------------------------------------------
-# Registration
-# ---------------------------------------------------------------------------
 
 def register(ctx) -> None:
-    """Register async-delegate plugin tools and hooks."""
     TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    _ensure_watcher()
 
-    # -- delegate_async --
+    _routing_for_spawn: List[Optional[Dict[str, str]]] = [None]
+
     ctx.register_tool(
         name="delegate_async",
         handler=lambda args, **kw: delegate_async_tool(
             goal=args.get("goal", ""),
             context=args.get("context", ""),
-            inject_mode=args.get("inject_mode", "queue"),
+            inject_mode=args.get("inject_mode", DEFAULT_INJECT_MODE),
             toolsets=args.get("toolsets", ""),
+            routing=_routing_for_spawn[0],
         ),
         schema={
             "name": "delegate_async",
@@ -723,62 +673,42 @@ def register(ctx) -> None:
                 "Returns immediately with a task_id — you are NOT blocked and can continue "
                 "the conversation normally. When the task completes, a notification is "
                 "automatically injected into this session so you can process results.\n\n"
-                "INJECTION MODES — choose based on how the result will be used:\n"
-                "- \"queue\" (default): The notification waits for your current turn to finish, "
-                "then delivers as a clean new turn. Use for background research, lookups, "
-                "fire-and-forget tasks where you just need the result later.\n"
-                "- \"steer\": The notification is interleaved into your current tool loop "
-                "WITHOUT interrupting. You'll see the result between tool calls and can "
-                "adjust your approach mid-turn. Use when the result may CHANGE what you're "
-                "currently doing (e.g., checking if an API exists before writing code that "
-                "calls it, validating a file path before editing, confirming a dependency "
-                "version before installing).\n\n"
-                "The subagent has full tool access (terminal, web, file, etc.). "
-                "Use check_async_tasks to manually poll task status if needed. "
-                "Do NOT use this for trivial tasks — use delegate_task for those."
+                "INJECTION MODES:\n"
+                "- \"queue\" (default): notification waits for current turn to finish.\n"
+                "- \"steer\": notification interleaved into current tool loop."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "goal": {
                         "type": "string",
-                        "description": "What the subagent should accomplish. Be specific and self-contained — the subagent has no context about this conversation."
+                        "description": "What the subagent should accomplish.",
                     },
                     "context": {
                         "type": "string",
-                        "description": "Optional background information the subagent needs (file paths, error messages, constraints)."
+                        "description": "Optional background information.",
                     },
                     "inject_mode": {
                         "type": "string",
                         "enum": ["queue", "steer"],
-                        "description": (
-                            "How to deliver the result when the task finishes. "
-                            "\"queue\" = wait for current turn to end, then deliver as new turn (default, safe). "
-                            "\"steer\" = interleave into current tool loop so you can react mid-turn (for results that change your approach)."
-                        ),
-                        "default": "queue"
+                        "description": "queue=wait for turn end, steer=interleave mid-turn",
+                        "default": DEFAULT_INJECT_MODE,
                     },
                     "toolsets": {
                         "type": "string",
-                        "description": (
-                            "Comma-separated toolsets to load for the subagent. "
-                            "Default: \"web,terminal,file,browser,vision\" (covers research, code, files, browsing, images). "
-                            "Specify fewer for faster startup (e.g. \"file\" for trivial tasks, \"web\" for lookups). "
-                            "Add more if needed (e.g. \"web,terminal,file,image_gen\" for image generation tasks)."
-                        ),
-                        "default": ""
+                        "description": "Comma-separated toolsets. Default: web,terminal,file,browser,vision",
+                        "default": "",
                     },
                 },
                 "required": ["goal"],
             },
         },
         toolset="async-delegation",
-        description="Spawn a background subagent to work on a task ASYNCHRONOUSLY. Returns immediately with a task_id.",
+        description="Spawn a background subagent asynchronously.",
         emoji="🚀",
         check_fn=lambda: True,
     )
 
-    # -- check_async_tasks --
     ctx.register_tool(
         name="check_async_tasks",
         handler=lambda args, **kw: check_async_tasks_tool(
@@ -786,17 +716,13 @@ def register(ctx) -> None:
         ),
         schema={
             "name": "check_async_tasks",
-            "description": (
-                "Check status of async delegated tasks. "
-                "Pass a task_id to check a specific task, or leave empty to list all tasks. "
-                "Completed task results are auto-injected when they finish."
-            ),
+            "description": "Check status of async delegated tasks.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "task_id": {
                         "type": "string",
-                        "description": "Specific task ID to check, or empty string to list all."
+                        "description": "Specific task ID, or empty to list all.",
                     },
                 },
                 "required": [],
@@ -808,9 +734,16 @@ def register(ctx) -> None:
         check_fn=lambda: True,
     )
 
-    # Hooks
-    ctx.register_hook("pre_gateway_dispatch", capture_routing)
+    class _RoutingCapture:
+        def __call__(self, **kw) -> Optional[Dict[str, str]]:
+            with _routing_lock:
+                latest = _task_routing.get("_latest")
+                if latest:
+                    _routing_for_spawn[0] = latest
+            return capture_routing(**kw)
+
+    ctx.register_hook("pre_gateway_dispatch", _RoutingCapture())
     ctx.register_hook("pre_llm_call", pre_llm_inject_results)
     ctx.register_hook("on_session_end", cleanup_stale_tasks)
 
-    logger.info("async-delegate plugin registered (v6 — dual-mode injection: queue + steer)")
+    logger.info("async-delegate plugin registered (v7 — dual-mode injection: queue + steer)")

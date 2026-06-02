@@ -8,3 +8,4 @@ __pycache__/
 .memory/
 opencode.json
 .ignore
+.plans/

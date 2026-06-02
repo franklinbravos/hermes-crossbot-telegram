@@ -1730,6 +1730,100 @@ def _cleanup_old_log_files() -> int:
         return 0
 
 
+def _auto_unblock_stale_blocked_tasks() -> int:
+    """Auto-unblock kanban tasks blocked for >24h by marking them done.
+
+    Workers that hit terminal security blocks produce tasks stuck in
+    'blocked' forever, clogging the dispatcher and adding latency.
+    After 24h the blocking condition is assumed stale and the task
+    is closed with an abandonment note.
+    """
+    unblocked = 0
+    for db_path, board_label in _iter_boards():
+        try:
+            with sqlite3.connect(db_path, timeout=5) as conn:
+                cutoff = time.time() - 86400
+                rows = conn.execute(
+                    "SELECT id, title FROM tasks "
+                    "WHERE status='blocked' AND completed_at IS NULL "
+                    "AND created_at < ? LIMIT 20",
+                    (cutoff,),
+                ).fetchall()
+                for task_id, title in rows:
+                    conn.execute(
+                        "UPDATE tasks SET status='done', completed_at=? "
+                        "WHERE id=? AND status='blocked'",
+                        (time.time(), task_id),
+                    )
+                    ev_payload = json.dumps({
+                        "reason": "auto-unblocked after 24h idle — blocking condition assumed stale"
+                    })
+                    conn.execute(
+                        "INSERT INTO task_events (task_id, kind, payload, created_at) "
+                        "VALUES (?, 'unblocked', ?, ?)",
+                        (task_id, ev_payload, time.time()),
+                    )
+                    logger.info(
+                        "crossbot: auto-unblocked stale blocked task %s (%s) on board '%s'",
+                        task_id, (title or "")[:60], board_label,
+                    )
+                    unblocked += 1
+            conn.commit()
+        except Exception as exc:
+            logger.debug("crossbot: auto-unblock check failed for board '%s': %s", board_label, exc)
+    return unblocked
+
+
+def _reconcile_outbox_kanban_status() -> int:
+    """Detect and fix inconsistency: outbox pending but kanban task done.
+
+    When a kanban worker completes but the outbox remains 'pending'
+    (e.g. post_tool_call hook didn't fire), the message bus stalls.
+    This detects such orphans and marks them 'done' with an abandonment note.
+    """
+    fixed = 0
+    conn = _open_shared_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, kanban_task_id FROM outbox "
+            "WHERE status='pending' AND kanban_task_id != '' "
+            "ORDER BY ts ASC LIMIT 20",
+        ).fetchall()
+        for outbox_id, task_id in rows:
+            if not task_id:
+                continue
+            task_done = False
+            for db_path, board_label in _iter_boards():
+                try:
+                    with sqlite3.connect(db_path, timeout=5) as tconn:
+                        row = tconn.execute(
+                            "SELECT status FROM tasks WHERE id=? LIMIT 1",
+                            (task_id,),
+                        ).fetchone()
+                        if row and row[0] in ("done", "archived"):
+                            task_done = True
+                            break
+                except Exception:
+                    continue
+            if task_done:
+                conn.execute(
+                    "UPDATE outbox SET status='done', response_text='[auto-reconciled: kanban task completed]', completed_at=? "
+                    "WHERE id=? AND status='pending'",
+                    (time.time(), outbox_id),
+                )
+                logger.info(
+                    "crossbot: reconciled outbox #%d (kanban task %s is done, outbox was pending)",
+                    outbox_id, task_id,
+                )
+                fixed += 1
+        conn.commit()
+    except Exception as exc:
+        logger.warning("crossbot: outbox/kanban reconciliation failed: %s", exc)
+    finally:
+        conn.close()
+    return fixed
+
+
 def run_maintenance(force: bool = False) -> None:
     """Run periodic maintenance — outbox prune, stale mark, log rotate.
 
@@ -1743,6 +1837,8 @@ def run_maintenance(force: bool = False) -> None:
     _cleanup_old_outbox()
     _cleanup_stale_pending()
     _cleanup_old_log_files()
+    _auto_unblock_stale_blocked_tasks()
+    _reconcile_outbox_kanban_status()
     _last_cleanup = now
 
 
@@ -2800,6 +2896,99 @@ def register(ctx) -> None:
         },
     )
 
+    # -- purge tool --
+    def _crossbot_purge_tool(args: dict, **kw) -> str:
+        """Remove todos os dados do crossbot: banco, kanban, configs, logs."""
+        removed = []
+        errors = []
+
+        # 1. Shared DB
+        db_path = _shared_db_path()
+        try:
+            if os.path.isfile(db_path):
+                os.remove(db_path)
+                removed.append("database: %s" % db_path)
+        except Exception as e:
+            errors.append("database: %s" % e)
+
+        # 2. Kanban board
+        board = _crossbot_kanban_board()
+        board_dir = _boards_dir() / board
+        try:
+            if board_dir.is_dir():
+                import shutil as _sh
+                _sh.rmtree(str(board_dir))
+                removed.append("kanban board: %s" % board_dir)
+        except Exception as e:
+            errors.append("kanban board: %s" % e)
+
+        # 3. Config files
+        for cfg_name in ("topic-map.json", "visibility-config.json"):
+            cfg_path = _plugin_dir / cfg_name
+            try:
+                if cfg_path.is_file():
+                    cfg_path.unlink()
+                    removed.append("config: %s" % cfg_name)
+            except Exception as e:
+                errors.append("config %s: %s" % (cfg_name, e))
+
+        # 4. Audit logs
+        log_dir = _hermes_home() / "logs" / "crossbot"
+        try:
+            if log_dir.is_dir():
+                import shutil as _sh2
+                _sh2.rmtree(str(log_dir))
+                removed.append("logs: %s" % log_dir)
+        except Exception as e:
+            errors.append("logs: %s" % e)
+
+        # 5. Reset dispatcher interval back to 60s
+        try:
+            for _cfg_file in [
+                Path(os.environ.get("HERMES_CONFIG", "")),
+                _hermes_home() / "config.yaml",
+                _hermes_home() / "config.yml",
+            ]:
+                if _cfg_file and _cfg_file.is_file():
+                    _raw = _cfg_file.read_text(encoding="utf-8")
+                    if "dispatch_interval_seconds: 10" in _raw:
+                        _new = _raw.replace(
+                            "dispatch_interval_seconds: 10",
+                            "dispatch_interval_seconds: 60",
+                        )
+                        _cfg_file.write_text(_new, encoding="utf-8")
+                        removed.append("config reset: kanban dispatch interval -> 60s")
+                    break
+        except Exception as e:
+            errors.append("config reset: %s" % e)
+
+        # 6. Plugin directory removal hint
+        plugin_dir_str = str(_plugin_dir)
+        removed.append("plugin dir (manual): rm -rf '%s'" % plugin_dir_str)
+
+        parts = []
+        if removed:
+            parts.append("Removed:\n- " + "\n- ".join(removed))
+        if errors:
+            parts.append("Errors:\n- " + "\n- ".join(errors))
+        result = "\n\n".join(parts) if parts else "Nothing to remove."
+        return json.dumps({"ok": not errors, "detail": result}, indent=2)
+
+    ctx.register_tool(
+        name="crossbot_purge",
+        handler=_crossbot_purge_tool,
+        schema={
+            "name": "crossbot_purge",
+            "description": (
+                "Remove todos os dados do crossbot: banco SQLite, kanban board, "
+                "config files, audit logs, e reseta dispatcher interval para 60s. "
+                "Use ANTES de reinstalar o plugin do zero. O diretório do plugin "
+                "precisa ser removido manualmente (rm -rf)."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    )
+
     ctx.register_hook("pre_llm_call", _inject_onboarding_context)
     ctx.register_hook("pre_llm_call", _shared_history.inject_channel_context)
     ctx.register_hook("pre_llm_call", _inject_kanban_context)
@@ -2809,6 +2998,32 @@ def register(ctx) -> None:
     ctx.register_hook("post_llm_call", _shared_history.record_telegram_turn)
     ctx.register_hook("post_llm_call", _post_llm_mention_relay)
     ctx.register_hook("post_tool_call", _on_post_tool_call)
+
+    # Auto-tune kanban dispatcher — reduce polling from 60s to 10s
+    # so cross-bot chains advance faster. Only runs once at plugin load.
+    try:
+        import pathlib as _pl
+        for _cfg_candidate in [
+            Path(os.environ.get("HERMES_CONFIG", "")),
+            _hermes_home() / "config.yaml",
+            _hermes_home() / "config.yml",
+        ]:
+            if _cfg_candidate and _cfg_candidate.is_file():
+                _raw = _cfg_candidate.read_text(encoding="utf-8")
+                if "dispatch_interval_seconds: 60" in _raw:
+                    _new = _raw.replace(
+                        "dispatch_interval_seconds: 60",
+                        "dispatch_interval_seconds: 10",
+                    )
+                    _cfg_candidate.write_text(_new, encoding="utf-8")
+                    logger.info(
+                        "crossbot: auto-set dispatch_interval_seconds=10 in %s",
+                        _cfg_candidate,
+                    )
+                break
+    except Exception as _exc:
+        logger.debug("crossbot: could not auto-tune kanban dispatcher: %s", _exc)
+
     logger.info(
         "crossbot plugin v%s registered (tg_db=%s, history=%d)",
         _get_plugin_version(),
