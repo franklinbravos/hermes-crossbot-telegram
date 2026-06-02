@@ -1,17 +1,19 @@
-# Crossbot — Telegram mensagem bot-to-bot para Hermes
+# Crossbot — Telegram bot-to-bot messaging for Hermes
 
-Plugin Hermes para **bots conversarem entre si no Telegram** — histórico compartilhado, outbox, Kanban, mention relay (`@colega`) e visibilidade no grupo.
+> **Also available in:** [Português](./README.pt-BR.md)
 
-**Versão:** 0.5.2 *(pré-release — v1.0 após validação em produção)*  
-**Requisitos:** [Hermes Agent](https://github.com/NousResearch/hermes-agent) v0.13+ · Python 3.11+ · stdlib only
+A Hermes plugin for **bots to talk to each other on Telegram** — shared history, outbox, Kanban, mention relay (`@colleague`), and group visibility.
+
+**Version:** 0.5.2 *(pre-release — v1.0 after production validation)*  
+**Requirements:** [Hermes Agent](https://github.com/NousResearch/hermes-agent) v0.13+ · Python 3.11+ · stdlib only
 
 ---
 
-## Onboarding guiado
+## Guided Onboarding
 
-Instalação passo a passo **numerada** (etapas 1–10) com **validação automática** em cada gate. O agente Hermes ou um operador segue a etapa atual; **não avança** até o verificador dar OK (outbox, audit, Kanban, config).
+Step-by-step **numbered** installation (steps 1–10) with **automatic validation** at each gate. The Hermes agent or an operator follows the current step; it **does not advance** until the verifier gives OK (outbox, audit, Kanban, config).
 
-**Como iniciar:**
+**How to start:**
 
 ```bash
 git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git ~/hermes-crossbot-telegram
@@ -19,48 +21,48 @@ cd ~/hermes-crossbot-telegram
 ./scripts/crossbot-onboarding.sh start
 ./scripts/crossbot-onboarding.sh current
 ./scripts/crossbot-onboarding.sh verify --watch 120
-./scripts/crossbot-onboarding.sh advance   # só após verify OK
+./scripts/crossbot-onboarding.sh advance   # only after verify OK
 ```
 
-Doc completa: [docs/onboarding/00-onboarding-guiado.md](./docs/onboarding/00-onboarding-guiado.md)
+Full docs: [docs/onboarding/00-onboarding-guiado.md](./docs/onboarding/00-onboarding-guiado.md)
 
-**Se travar numa etapa:**
+**If stuck on a step:**
 
-| Situação | O que fazer |
-|----------|-------------|
-| Não sabe em qual etapa está | `./scripts/crossbot-onboarding.sh status` |
-| Etapa não passa no verify | `./scripts/crossbot-onboarding.sh current` — ler `failure_hints`; **não pule** |
-| Precisa enviar evidência ao dev | `./scripts/crossbot-debug-pack.sh pack` (ou `-r ROUND`) |
-| Worker Kanban / benchmark parado | Aguardar até **180s**; verificar task `blocked` |
-| Quer recomeçar | `./scripts/crossbot-onboarding.sh reset` |
+| Situation | What to do |
+|-----------|------------|
+| Don't know which step | `./scripts/crossbot-onboarding.sh status` |
+| Step won't pass verify | `./scripts/crossbot-onboarding.sh current` — read `failure_hints`; **do not skip** |
+| Need to send evidence to dev | `./scripts/crossbot-debug-pack.sh pack` (or `-r ROUND`) |
+| Kanban worker / benchmark stuck | Wait up to **180s**; check task `blocked` |
+| Want to restart | `./scripts/crossbot-onboarding.sh reset` |
 
-**Não faça:** avançar sem `verify` OK; pedir relatório manual em vez do debug-pack; rodar `crossbot_cli` no worker Kanban (terminal costuma ser bloqueado).
+**Do not:** advance without `verify` OK; ask for a manual report instead of debug-pack; run `crossbot_cli` inside a Kanban worker (terminal is usually blocked).
 
-Sintoma → etapa: [debug-crossbot.md](./docs/reference/debug-crossbot.md)
+Symptom → step: [debug-crossbot.md](./docs/reference/debug-crossbot.md)
 
 ---
 
-## Para o Hermes — copie e cole
+## For Hermes — copy and paste
 
-Mande isso no chat do bot que tem terminal (não precisa explicar técnico):
+Send this to the bot that has terminal access (no need to explain the technical details):
 
 ```
-Preciso que você instale o crossbot aqui no servidor — é o plugin que faz os bots conversarem entre si no Telegram.
+I need you to install crossbot on this server — it's the plugin that lets bots talk to each other on Telegram.
 
-Baixe o projeto do GitHub (franklinbravos/hermes-crossbot-telegram), rode a instalação completa e execute o onboarding guiado até a etapa 10. Não declare sucesso até crossbot-onboarding.sh status mostrar todas as etapas passed.
+Clone the project from GitHub (franklinbravos/hermes-crossbot-telegram), run the full installation, and execute the guided onboarding through step 10. Do not declare success until crossbot-onboarding.sh status shows all steps passed.
 
-Se já existia a versão antiga (kanban-context ou multi-agent-context), limpe isso e deixe só o crossbot.
+If an older version already exists (kanban-context or multi-agent-context), clean it up and keep only crossbot.
 
-No final me diga se deu certo, quais bots foram configurados e se o gateway reiniciou.
+When done, tell me whether it succeeded, which bots were configured, and whether the gateway restarted.
 
 bash -c 'set -euo pipefail; CB="${CROSSBOT_HOME:-$HOME/hermes-crossbot-telegram}"; if [ -d "$CB/.git" ]; then git -C "$CB" pull --ff-only; else git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git "$CB"; fi; chmod +x "$CB"/scripts/*.sh "$CB"/scripts/lib/*.sh; "$CB"/scripts/bootstrap.sh --yes --onboarding'
 ```
 
-Mais mensagens prontas (atualizar, teste, auto-update): [HERMES-INSTALL-PROMPT.md](./docs/onboarding/HERMES-INSTALL-PROMPT.md)
+More ready-to-use messages (update, test, auto-update): [HERMES-INSTALL-PROMPT.md](./docs/onboarding/HERMES-INSTALL-PROMPT.md)
 
 ---
 
-## Instalação manual (terminal)
+## Manual installation (terminal)
 
 ```bash
 git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git ~/hermes-crossbot-telegram
@@ -68,42 +70,42 @@ cd ~/hermes-crossbot-telegram
 ./scripts/bootstrap.sh --yes
 ```
 
-Com chat_id e roster conhecidos:
+With known chat_id and roster:
 
 ```bash
 ./scripts/bootstrap.sh --yes \
   --chat-id -100XXXXXXXXXX \
-  --orchestrator coordenador \
-  --players agente-a,agente-b
+  --orchestrator coordinator \
+  --players agent-a,agent-b
 ```
 
 ---
 
-## Auto-atualização
+## Auto-update
 
 ```bash
-~/hermes-crossbot-telegram/scripts/setup-auto-update-cron.sh   # cron diário
+~/hermes-crossbot-telegram/scripts/setup-auto-update-cron.sh   # daily cron
 ~/hermes-crossbot-telegram/scripts/auto-update.sh --restart    # manual
 ```
 
-O auto-update faz `git pull`, reinstala o plugin, migra legado e opcionalmente reinicia o gateway. Logs: `~/.hermes/logs/crossbot/auto-update.log`.
+Auto-update does `git pull`, reinstalls the plugin, migrates legacy data, and optionally restarts the gateway. Logs: `~/.hermes/logs/crossbot/auto-update.log`.
 
 ---
 
-## O que é
+## What it does
 
-| Problema | Solução crossbot |
-|----------|------------------|
-| Bots não veem mensagens de outros bots | Outbox SQLite + Kanban |
-| Operador não vê trocas entre bots | Espelho 📤/📥 no Telegram |
-| Delegação complexa | Mencione `@handle_colega` na resposta |
-| Dois plugins antigos | **Um plugin** — `crossbot` |
+| Problem | Crossbot solution |
+|---------|-------------------|
+| Bots can't see other bots' messages | SQLite outbox + Kanban |
+| Operator can't see bot-to-bot exchanges | 📤/📥 mirror on Telegram |
+| Complex delegation | Mention `@handle_colleague` in reply |
+| Two legacy plugins | **One plugin** — `crossbot` |
 
-Incorpora **kanban-context** (Franklin Bravos) e **multi-agent-context** (Kaishi). → [ATTRIBUTION.md](./plugins/crossbot/ATTRIBUTION.md)
+Incorporates **kanban-context** (Franklin Bravos) and **multi-agent-context** (Kaishi). → [ATTRIBUTION.md](./plugins/crossbot/ATTRIBUTION.md)
 
 ---
 
-## Teste
+## Testing
 
 ```bash
 ~/hermes-crossbot-telegram/scripts/fui-ao-mercado.sh
@@ -116,48 +118,48 @@ Incorpora **kanban-context** (Franklin Bravos) e **multi-agent-context** (Kaishi
 
 ## Scripts
 
-| Script | Função |
-|--------|--------|
-| `bootstrap.sh` | **Instalação completa** (migrate + install + configure + board + restart) |
-| `install.sh` | Só copia plugin (+ migrate se `cross-bot`) |
+| Script | Function |
+|--------|----------|
+| `bootstrap.sh` | **Full installation** (migrate + install + configure + board + restart) |
+| `install.sh` | Copy plugin only (+ migrate if `cross-bot`) |
 | `auto-update.sh` | Pull + reinstall + migrate |
-| `setup-auto-update-cron.sh` | Agenda cron diário |
+| `setup-auto-update-cron.sh` | Schedule daily cron |
 | `configure-crossbot.sh` | topic-map + CROSSBOT_BOT_NAME |
-| `benchmark-chain.sh` | Motor unificado (cadeia cumulativa) |
-| `fui-ao-mercado.sh` | Benchmark tema mercado/feira (+1 item) |
-| `telefone-sem-fio.sh` | Benchmark tema telefone (+2 palavras) |
-| `benchmark-report.sh` | Tempo total e % sucesso |
-| `crossbot-debug-pack.sh` | Modo debug — zip factual para enviar ao dev |
-| `crossbot-onboarding.sh` | **Onboarding guiado** — etapas 1–10 com gates |
+| `benchmark-chain.sh` | Unified engine (cumulative chain) |
+| `fui-ao-mercado.sh` | Market theme benchmark (+1 item) |
+| `telefone-sem-fio.sh` | Telephone theme benchmark (+2 words) |
+| `benchmark-report.sh` | Total time and success rate |
+| `crossbot-debug-pack.sh` | Debug mode — factual zip for dev |
+| `crossbot-onboarding.sh` | **Guided onboarding** — steps 1–10 with gates |
 
 ---
 
-## Documentação
+## Documentation
 
-| Guia | Link |
-|------|------|
-| **Onboarding guiado (1–10)** | [00-onboarding-guiado.md](./docs/onboarding/00-onboarding-guiado.md) |
-| Instalação (copiar pro Hermes) | [HERMES-INSTALL-PROMPT.md](./docs/onboarding/HERMES-INSTALL-PROMPT.md) |
-| Instalar e adaptar | [02-instalar-e-adaptar.md](./docs/onboarding/02-instalar-e-adaptar.md) |
-| Workspace e colegas | [03-workspace-e-colegas.md](./docs/onboarding/03-workspace-e-colegas.md) |
+| Guide | Link |
+|-------|------|
+| **Guided onboarding (1–10)** | [00-onboarding-guiado.md](./docs/onboarding/00-onboarding-guiado.md) |
+| Installation (copy to Hermes) | [HERMES-INSTALL-PROMPT.md](./docs/onboarding/HERMES-INSTALL-PROMPT.md) |
+| Install and customize | [02-instalar-e-adaptar.md](./docs/onboarding/02-instalar-e-adaptar.md) |
+| Workspace and colleagues | [03-workspace-e-colegas.md](./docs/onboarding/03-workspace-e-colegas.md) |
 | Debug | [debug-crossbot.md](./docs/reference/debug-crossbot.md) |
 | Hub | [docs/README.md](./docs/README.md) |
 
 ---
 
-## Migração desde plugins antigos
+## Migration from legacy plugins
 
-O **bootstrap** e o **install.sh cross-bot** removem automaticamente:
+**bootstrap** and **install.sh cross-bot** automatically remove:
 
-- `~/.hermes/plugins/kanban-context` e `multi-agent-context`
-- Symlinks legados em `profiles/*/plugins/`
-- Entradas legadas em `config.yaml` → substituídas por `crossbot`
-- `.env`: adiciona `CROSSBOT_BOT_NAME` e `CROSSBOT_DB_PATH` se faltarem
+- `~/.hermes/plugins/kanban-context` and `multi-agent-context`
+- Legacy symlinks in `profiles/*/plugins/`
+- Legacy entries in `config.yaml` → replaced by `crossbot`
+- `.env`: adds `CROSSBOT_BOT_NAME` and `CROSSBOT_DB_PATH` if missing
 
-Repo antigo `hermes-community-plugins` → renomeie remote para `hermes-crossbot-telegram` ou clone fresh em `~/hermes-crossbot-telegram`.
+Old repo `hermes-community-plugins` → rename remote to `hermes-crossbot-telegram` or clone fresh into `~/hermes-crossbot-telegram`.
 
 ---
 
-## Licença
+## License
 
 MIT
