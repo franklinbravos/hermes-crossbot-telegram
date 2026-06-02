@@ -1,45 +1,47 @@
 # Plugins
 
-Pacotes instaláveis para [Hermes Agent](https://github.com/NousResearch/hermes-agent).
+Installable packages for [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 
-Repositório: **[hermes-crossbot-telegram](https://github.com/franklinbravos/hermes-crossbot-telegram)**
+> **Also available in:** [Português](./README.pt-BR.md)
 
-## Instalação rápida
+Repository: **[hermes-crossbot-telegram](https://github.com/franklinbravos/hermes-crossbot-telegram)**
+
+## Quick Install
 
 ```bash
 git clone https://github.com/franklinbravos/hermes-crossbot-telegram.git
-cd crossbot
+cd hermes-crossbot-telegram
 chmod +x scripts/install.sh
-./scripts/install.sh              # crossbot (recomendado)
+./scripts/install.sh              # crossbot (recommended)
 ./scripts/install.sh all          # crossbot + async-delegate
-./scripts/install.sh async-delegate   # um plugin
+./scripts/install.sh async-delegate   # single plugin
 ```
 
-Destino: `~/.hermes/plugins/`
+Target: `~/.hermes/plugins/`
 
 ## Bundles
 
-| Bundle | Plugin | Quando usar |
+| Bundle | Plugin | When to use |
 |--------|--------|-------------|
-| **cross-bot** | `crossbot` | Bots conversando entre si no Telegram |
-| **async-delegate** | `async-delegate` | Tarefas em background (opcional) |
+| **cross-bot** | `crossbot` | Bots talking to each other via Telegram |
+| **async-delegate** | `async-delegate` | Background async tasks (optional) |
 
-## Habilitar no Hermes
+## Enable in Hermes
 
 ```yaml
-# config.yaml de cada profile
+# config.yaml on each profile
 plugins:
   enabled:
     - crossbot
 ```
 
-Setup: [../docs/onboarding/02-instalar-e-adaptar.md](../docs/onboarding/02-instalar-e-adaptar.md)
+Setup guide: [../docs/onboarding/02-instalar-e-adaptar.md](../docs/onboarding/02-instalar-e-adaptar.md)
 
-## Versões
+## Versions
 
-| Plugin | Versão |
-|--------|--------|
+| Plugin | Version |
+|--------|---------|
 | crossbot | 0.5.2 |
 | async-delegate | 1.1.0 |
 
-**Nota:** `crossbot` v0.5 unifica `kanban-context` + `multi-agent-context`. v1.0 = milestone pós-testes. Ver [crossbot/ATTRIBUTION.md](./crossbot/ATTRIBUTION.md).
+**Note:** `crossbot` v0.5 unifies `kanban-context` + `multi-agent-context`. v1.0 is the production milestone. See [crossbot/ATTRIBUTION.md](./crossbot/ATTRIBUTION.md).

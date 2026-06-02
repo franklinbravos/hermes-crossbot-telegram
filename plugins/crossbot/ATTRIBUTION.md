@@ -1,32 +1,34 @@
-# Atribuição — plugin crossbot
+# Attribution — crossbot plugin
 
-O **crossbot** unifica funcionalidades que existiam como plugins separados neste repositório.
+> **Also available in:** [Português](./ATTRIBUTION.pt-BR.md)
 
-## Componentes incorporados
+The **crossbot** plugin unifies features that previously existed as separate plugins in this repository.
 
-| Módulo original | Autor | Função no crossbot |
-|-----------------|-------|---------------------|
-| **kanban-context** | Franklin Bravos (@franklinbravos) | Outbox bot-to-bot, Kanban dispatch, mention relay, visibilidade Telegram, coordenação de resposta |
-| **multi-agent-context** | Kaishi (@kaishi00) | Histórico compartilhado Telegram (SQLite) e Discord (REST) — `shared_history.py` |
+## Incorporated Components
 
-## Nome e versão
+| Original module | Author | Role in crossbot |
+|-----------------|--------|------------------|
+| **kanban-context** | Franklin Bravos (@franklinbravos) | Bot-to-bot outbox, Kanban dispatch, mention relay, Telegram visibility, response coordination |
+| **multi-agent-context** | Kaishi (@kaishi00) | Shared Telegram history (SQLite) and Discord (REST) — `shared_history.py` |
 
-- **Repositório:** [github.com/franklinbravos/hermes-crossbot-telegram](https://github.com/franklinbravos/hermes-crossbot-telegram) *(antes `hermes-community-plugins`)*
-- **Plugin:** `crossbot` v0.5.1 *(pré-release)*
-- **v1.0:** reservada para quando mention relay + visibilidade estiverem validados em produção
-- **Dependências:** Hermes Core + biblioteca padrão Python (sem `pip install` extra)
+## Name and Version
 
-## Migração desde v2.x
+- **Repository:** [github.com/franklinbravos/hermes-crossbot-telegram](https://github.com/franklinbravos/hermes-crossbot-telegram) *(formerly `hermes-community-plugins`)*
+- **Plugin:** `crossbot` v0.5.2 *(pre-release)*
+- **v1.0:** reserved for when mention relay + visibility are validated in production
+- **Dependencies:** Hermes Core + Python standard library (no `pip install` extras)
 
-| Antes (plugins separados) | Depois (crossbot) |
-|------------|-------------|
-| `multi-agent-context` + `kanban-context` | apenas `crossbot` |
+## Migration from v2.x
+
+| Before (separate plugins) | After (crossbot) |
+|---------------------------|------------------|
+| `multi-agent-context` + `kanban-context` | `crossbot` only |
 | `~/.hermes/plugins/kanban-context/` | `~/.hermes/plugins/crossbot/` |
-| `MULTI_AGENT_TG_DB_PATH` | `CROSSBOT_DB_PATH` (alias legado aceito) |
-| DB default `multi_agent_tg_shared.db` | `crossbot.db` (usa DB legado se existir) |
+| `MULTI_AGENT_TG_DB_PATH` | `CROSSBOT_DB_PATH` (legacy alias accepted) |
+| Default DB `multi_agent_tg_shared.db` | `crossbot.db` (uses legacy DB if exists) |
 | Logs `~/.hermes/logs/kanban-context/` | `~/.hermes/logs/crossbot/` |
 
-Em `config.yaml` de cada profile:
+In each profile's `config.yaml`:
 
 ```yaml
 plugins:
@@ -34,4 +36,4 @@ plugins:
     - crossbot
 ```
 
-Remova `kanban-context` e `multi-agent-context` da lista `enabled`.
+Remove `kanban-context` and `multi-agent-context` from the `enabled` list.

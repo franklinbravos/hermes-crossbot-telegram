@@ -1,5 +1,7 @@
 # async-delegate
 
+> **Also available in:** [Português](./README.pt-BR.md)
+
 **Spawn background subagents without blocking the current conversation turn.**
 
 A Hermes Agent plugin that adds true async task delegation — fire off a subagent to work on something in the background while you keep chatting. When the task finishes, a notification is automatically injected back into the originating session.
