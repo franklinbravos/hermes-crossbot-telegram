@@ -1272,6 +1272,10 @@ def _maybe_relay_benchmark_chain(
     return new_id
 
 
+_responding_outboxes: set = set()
+_responding_lock = threading.Lock()
+
+
 def crossbot_respond(
     outbox_id: int,
     response_text: str,
@@ -1279,82 +1283,102 @@ def crossbot_respond(
 ) -> bool:
     """Mark a message as done with the response text.
 
-    Args:
-        outbox_id: The outbox row ID from crossbot_send()
-        response_text: The response/reply content
-
-    Returns:
-        True if successful, False if message not found.
+    Prevents duplicate responses from post_tool_call + post_llm_call double-fire:
+    the first call locks the outbox via _responding_outboxes and the UPDATE
+    checks AND status='pending'. Subsequent calls return True without action.
     """
-    conn = _open_shared_db()
-    now = time.time()
+    with _responding_lock:
+        if outbox_id in _responding_outboxes:
+            logger.info("crossbot: message #%d already being responded (dedup)", outbox_id)
+            return True
+        _responding_outboxes.add(outbox_id)
+
+    responded = False
+    conn = None
     try:
-        # Get original message details for visibility + telegram_msg_id for reply
-        orig = conn.execute(
-            "SELECT from_bot, to_bot, subject, telegram_msg_id, "
+        conn = _open_shared_db()
+        now = time.time()
+
+        row = conn.execute(
+            "SELECT status, from_bot, to_bot, subject, telegram_msg_id, "
             "source_telegram_msg_id, source_message_text, body "
             "FROM outbox WHERE id=?",
             (outbox_id,),
         ).fetchone()
+        if not row:
+            logger.warning("crossbot: message #%d not found", outbox_id)
+            return False
+        if row[0] != "pending":
+            logger.info("crossbot: message #%d already %s (skipping duplicate)", outbox_id, row[0])
+            return True
+
+        orig = row[1:]
 
         cur = conn.execute(
-            "UPDATE outbox SET status='done', response_text=?, completed_at=? WHERE id=?",
+            "UPDATE outbox SET status='done', response_text=?, completed_at=? "
+            "WHERE id=? AND status='pending'",
             (response_text[:2000], now, outbox_id),
         )
         conn.commit()
         if cur.rowcount == 0:
-            logger.warning("crossbot: message #%d not found", outbox_id)
-            return False
+            logger.info("crossbot: message #%d already done (race)", outbox_id)
+            return True
 
+        responded = True
         logger.info("crossbot: message #%d responded (%d chars)", outbox_id, len(response_text))
-        _crossbot_audit_log(
-            "crossbot_respond",
+    finally:
+        if conn:
+            conn.close()
+
+    if not responded:
+        return True
+
+    _crossbot_audit_log(
+        "crossbot_respond",
+        outbox_id=outbox_id,
+        response_len=len(response_text),
+        from_bot=orig[0] if orig else None,
+        to_bot=orig[1] if orig else None,
+    )
+
+    if orig:
+        responder = orig[1]
+        requester = orig[0]
+        topic_id = _get_topic_for_bot(responder)
+        source_text = (orig[5] or orig[6] or "").strip()
+        reply_target = orig[4] or orig[3]
+        requester_handle = _get_bot_handle(requester)
+        citation_html = None
+        if source_text:
+            citation_html = (
+                "📥 <b>@{}</b>\n\n"
+                "{}"
+            ).format(
+                _escape_telegram_html(_get_bot_handle(responder)),
+                _format_citation_reply(requester_handle, source_text, response_text),
+            )
+        _post_visibility_message(
+            response_text, "responded",
+            thread_id=str(topic_id) if topic_id else None,
+            reply_to=int(reply_target) if reply_target else None,
             outbox_id=outbox_id,
-            response_len=len(response_text),
-            from_bot=orig[0] if orig else None,
-            to_bot=orig[1] if orig else None,
+            post_as_bot=responder,
+            citation_html=citation_html,
         )
 
-        # Post response to Telegram — try real reply, then citation fallback
-        if orig:
-            responder = orig[1]
-            requester = orig[0]
-            topic_id = _get_topic_for_bot(responder)
-            source_text = (orig[5] or orig[6] or "").strip()
-            reply_target = orig[4] or orig[3]
-            requester_handle = _get_bot_handle(requester)
-            vis_text = response_text
-            citation_html = None
-            if source_text:
-                citation_html = (
-                    f"📥 <b>@{_escape_telegram_html(_get_bot_handle(responder))}</b>\n\n"
-                    + _format_citation_reply(requester_handle, source_text, response_text)
-                )
-            _post_visibility_message(
-                vis_text,
-                "responded",
-                thread_id=str(topic_id) if topic_id else None,
-                reply_to=int(reply_target) if reply_target else None,
-                outbox_id=outbox_id,
-                post_as_bot=responder,
-                citation_html=citation_html,
-            )
+    orig_body = (orig[6] or "") if orig else ""
+    orig_subject = (orig[2] or "") if orig else ""
+    if orig_body and _is_benchmark_chain_body(orig_body):
+        _maybe_relay_benchmark_chain(
+            outbox_id=outbox_id,
+            responder=(orig[1] if orig else _my_bot_name()),
+            response_text=response_text,
+            orig_body=orig_body,
+            subject=orig_subject,
+            metadata=metadata,
+        )
 
-        orig_body = (orig[6] or "") if orig else ""
-        orig_subject = (orig[2] or "") if orig else ""
-        if orig_body and _is_benchmark_chain_body(orig_body):
-            _maybe_relay_benchmark_chain(
-                outbox_id=outbox_id,
-                responder=(orig[1] if orig else _my_bot_name()),
-                response_text=response_text,
-                orig_body=orig_body,
-                subject=orig_subject,
-                metadata=metadata,
-            )
-
-        return True
-    finally:
-        conn.close()
+    return True
 
 
 def _crossbot_send_tool(args: dict, **kwargs) -> str:
@@ -2890,12 +2914,27 @@ def _dispatch_one_ready(db_path: Path) -> bool:
     Uses SQLite to find and claim a 'ready' task atomically, then
     dispatches via ``hermes kanban --board <name> claim <id>``.
 
+    Runs PRAGMA quick_check before each cycle to detect torn/corrupt
+    databases early (mitigation for Flávia's torn-extend scenario).
+
     Returns True if a task was claimed.
     """
     try:
         conn = sqlite3.connect(str(db_path), timeout=5)
         conn.execute("PRAGMA busy_timeout=3000")
         conn.execute("PRAGMA journal_mode=WAL")
+
+        # Detect DB corruption early — matches Flávia's torn-extend pattern
+        try:
+            ok = conn.execute("PRAGMA quick_check").fetchone()
+            if ok and ok[0] and ok[0] != "ok":
+                logger.warning(
+                    "crossbot-dispatcher: DB corruption detected (%s) — "
+                    "pausing dispatch for board until next tick", ok[0],
+                )
+                return False
+        except Exception:
+            pass
     except Exception:
         return False
 
