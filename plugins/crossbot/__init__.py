@@ -901,6 +901,7 @@ def _resolve_visibility_token(post_as_bot: Optional[str] = None) -> Optional[str
     When post_as_bot is set (e.g. 'agente-b' for responses), use that profile's
     token so the message appears from that bot — not from the visibility bot.
     Falls back to CROSSBOT_VISIBILITY_TOKEN when profile token is missing.
+    As a last resort, scans all profiles for any available token.
     """
     if post_as_bot:
         profile_token = _get_profile_telegram_token(post_as_bot)
@@ -910,7 +911,26 @@ def _resolve_visibility_token(post_as_bot: Optional[str] = None) -> Optional[str
             "crossbot-visibility: no token for profile '%s', falling back to visibility token",
             post_as_bot,
         )
-    return _get_visibility_token()
+    token = _get_visibility_token()
+    if token:
+        return token
+
+    # Last resort: scan all profiles for ANY token
+    try:
+        prof_dir = _hermes_home() / "profiles"
+        if prof_dir.is_dir():
+            for prof in sorted(prof_dir.iterdir()):
+                if prof.is_dir():
+                    t = _get_profile_telegram_token(prof.name)
+                    if t:
+                        logger.info(
+                            "crossbot-visibility: using token from profile '%s' as last resort",
+                            prof.name,
+                        )
+                        return t
+    except Exception:
+        pass
+    return None
 
 
 def _post_visibility_message(
@@ -1031,6 +1051,7 @@ def crossbot_send(
     body: str,
     kanban_task_id: str = "",
     kanban_db_path: str = "",
+    from_bot: Optional[str] = None,
 ) -> int:
     """Send a cross-bot message via the shared outbox.
 
@@ -1047,6 +1068,9 @@ def crossbot_send(
                         If empty, one is auto-created.
         kanban_db_path: Optional explicit kanban.db path.
                         If empty, uses default path.
+        from_bot: Explicit sender name. When None, resolves via
+                  _my_bot_name(). Use when calling from relay
+                  context where _my_bot_name() may return "bot".
 
     Returns:
         The outbox row ID.
@@ -1057,7 +1081,7 @@ def crossbot_send(
 
     conn = _open_shared_db()
     now = time.time()
-    from_bot = _my_bot_name()
+    from_bot = from_bot or _my_bot_name()
 
     # INSERT outbox FIRST so we know the row_id for the kanban task body
     try:
@@ -1254,6 +1278,7 @@ def _maybe_relay_benchmark_chain(
         to_bot=next_bot,
         subject=fwd_subject,
         body=forward_body,
+        from_bot=responder,
     )
     _crossbot_audit_log(
         "benchmark_relay",
@@ -3052,6 +3077,7 @@ def register(ctx) -> None:
         ctx.register_tool(
             name="crossbot_onboarding_status",
             handler=lambda args, **kw: ob.tool_status(**kw),
+            toolset="crossbot-onboarding",
             schema={
                 "name": "crossbot_onboarding_status",
                 "description": "Status do onboarding guiado crossbot (etapa atual, passed, evidence).",
@@ -3061,6 +3087,7 @@ def register(ctx) -> None:
         ctx.register_tool(
             name="crossbot_onboarding_verify",
             handler=lambda args, **kw: ob.tool_verify(**{**kw, **(args or {})}),
+            toolset="crossbot-onboarding",
             schema={
                 "name": "crossbot_onboarding_verify",
                 "description": "Verifica gate da etapa atual do onboarding (opcional watch_seconds).",
@@ -3078,6 +3105,7 @@ def register(ctx) -> None:
         ctx.register_tool(
             name="crossbot_onboarding_advance",
             handler=lambda args, **kw: ob.tool_advance(**kw),
+            toolset="crossbot-onboarding",
             schema={
                 "name": "crossbot_onboarding_advance",
                 "description": "Avança onboarding só se último verify passou.",
@@ -3088,6 +3116,7 @@ def register(ctx) -> None:
     ctx.register_tool(
         name="crossbot_send",
         handler=lambda args, **kw: _crossbot_send_tool(args, **kw),
+        toolset="crossbot",
         schema={
             "name": "crossbot_send",
             "description": (
@@ -3109,6 +3138,7 @@ def register(ctx) -> None:
     ctx.register_tool(
         name="crossbot_respond",
         handler=lambda args, **kw: _crossbot_respond_tool(args, **kw),
+        toolset="crossbot",
         schema={
             "name": "crossbot_respond",
             "description": (
@@ -3207,6 +3237,7 @@ def register(ctx) -> None:
     ctx.register_tool(
         name="crossbot_purge",
         handler=_crossbot_purge_tool,
+        toolset="crossbot",
         schema={
             "name": "crossbot_purge",
             "description": (
@@ -3228,6 +3259,40 @@ def register(ctx) -> None:
     ctx.register_hook("post_llm_call", _shared_history.record_telegram_turn)
     ctx.register_hook("post_llm_call", _post_llm_mention_relay)
     ctx.register_hook("post_tool_call", _on_post_tool_call)
+
+    # Auto-populate visibility-config.json token if empty
+    # so visibility works even when _my_bot_name() resolves to "bot".
+    try:
+        _vis_cfg = _read_visibility_config()
+        if not _vis_cfg.get("telegram_bot_token", "").strip():
+            _candidates = []
+            bot_token = os.environ.get("CROSSBOT_VISIBILITY_TOKEN", "").strip()
+            if bot_token:
+                _candidates.append(bot_token)
+            bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+            if bot_token:
+                _candidates.append(bot_token)
+            for _prof_dir in sorted(
+                (p for p in (_hermes_home() / "profiles").iterdir() if p.is_dir()),
+                key=lambda x: str(x),
+            ):
+                _env_file = _prof_dir / ".env"
+                if _env_file.is_file():
+                    for _line in _env_file.read_text().splitlines():
+                        if _line.startswith("TELEGRAM_BOT_TOKEN="):
+                            _val = _line.split("=", 1)[1].strip().strip('"').strip("'")
+                            if _val:
+                                _candidates.append(_val)
+            if _candidates:
+                _best = _candidates[0]
+                _vis_cfg["telegram_bot_token"] = _best
+                _write_visibility_config(_vis_cfg)
+                logger.info(
+                    "crossbot: auto-populated visibility token from %s",
+                    "env var" if _candidates[0] in (os.environ.get("CROSSBOT_VISIBILITY_TOKEN", ""), os.environ.get("TELEGRAM_BOT_TOKEN", "")) else "profile",
+                )
+    except Exception as _exc:
+        logger.debug("crossbot: could not auto-populate visibility token: %s", _exc)
 
     # Start mini-dispatcher daemon thread
     _start_dispatcher()
