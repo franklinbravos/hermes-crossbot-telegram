@@ -1,6 +1,6 @@
 # crossbot — Telegram bot-to-bot messaging
 
-> **Also available in:** [Português](./README.pt-BR.md)
+> 🇺🇸 **English** · 🇧🇷 [Português](./README.pt-BR.md)
 
 **Unified plugin** for multi-agent Hermes ecosystems on Telegram.
 

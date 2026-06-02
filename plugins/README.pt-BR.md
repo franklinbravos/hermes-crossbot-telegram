@@ -2,7 +2,7 @@
 
 Pacotes instaláveis para [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 
-> **Leia também em:** [English](./README.md)
+> 🇧🇷 **Português** · 🇺🇸 [English](./README.md)
 
 Repositório: **[hermes-crossbot-telegram](https://github.com/franklinbravos/hermes-crossbot-telegram)**
 

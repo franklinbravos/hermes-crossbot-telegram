@@ -1,6 +1,6 @@
 # async-delegate
 
-> **Leia também em:** [English](./README.md)
+> 🇧🇷 **Português** · 🇺🇸 [English](./README.md)
 
 **Dispara subagentes em background sem bloquear o turno atual da conversa.**
 

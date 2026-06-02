@@ -1,6 +1,6 @@
 # Crossbot — Telegram mensagem bot-to-bot para Hermes
 
-> **Leia também em:** [English](./README.md)
+> 🇧🇷 **Português** · 🇺🇸 [English](./README.md)
 
 Plugin Hermes para **bots conversarem entre si no Telegram** — histórico compartilhado, outbox, Kanban, mention relay (`@colega`) e visibilidade no grupo.
 

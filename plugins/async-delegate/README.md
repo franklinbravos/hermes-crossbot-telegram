@@ -1,6 +1,6 @@
 # async-delegate
 
-> **Also available in:** [Português](./README.pt-BR.md)
+> 🇺🇸 **English** · 🇧🇷 [Português](./README.pt-BR.md)
 
 **Spawn background subagents without blocking the current conversation turn.**
 

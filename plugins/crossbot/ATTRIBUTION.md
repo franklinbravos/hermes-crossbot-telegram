@@ -1,6 +1,6 @@
 # Attribution — crossbot plugin
 
-> **Also available in:** [Português](./ATTRIBUTION.pt-BR.md)
+> 🇺🇸 **English** · 🇧🇷 [Português](./ATTRIBUTION.pt-BR.md)
 
 The **crossbot** plugin unifies features that previously existed as separate plugins in this repository.
 

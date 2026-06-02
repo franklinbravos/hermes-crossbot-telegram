@@ -1,6 +1,6 @@
 # Atribuição — plugin crossbot
 
-> **Leia também em:** [English](./ATTRIBUTION.md)
+> 🇧🇷 **Português** · 🇺🇸 [English](./ATTRIBUTION.md)
 
 O **crossbot** unifica funcionalidades que existiam como plugins separados neste repositório.
 
