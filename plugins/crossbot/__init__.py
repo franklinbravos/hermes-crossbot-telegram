@@ -61,6 +61,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -2812,6 +2813,196 @@ def _inject_onboarding_context(**kwargs) -> Optional[Dict[str, str]]:
         return None
 
 
+# ---------------------------------------------------------------------------
+# Mini-dispatcher — daemon thread for fast cross-bot task dispatch
+# ---------------------------------------------------------------------------
+
+_dispatcher_thread: Optional[threading.Thread] = None
+_dispatcher_stop = threading.Event()
+_dispatcher_last_idle: float = 0.0
+_dispatcher_idle_polls: int = 0
+
+
+def _dispatcher_interval() -> int:
+    try:
+        return max(1, int(os.environ.get("CROSSBOT_DISPATCHER_INTERVAL", "5")))
+    except (ValueError, TypeError):
+        return 5
+
+
+def _dispatcher_enabled() -> bool:
+    raw = os.environ.get("CROSSBOT_DISPATCHER_ENABLED", "true").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def _dispatcher_max_idle() -> int:
+    try:
+        return max(10, int(os.environ.get("CROSSBOT_DISPATCHER_MAX_IDLE", "60")))
+    except (ValueError, TypeError):
+        return 60
+
+
+def _warmup_enabled() -> bool:
+    raw = os.environ.get("CROSSBOT_WARMUP_ENABLED", "true").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def _crossbot_dispatcher_loop() -> None:
+    """Daemon thread: polls cross-bot board every N seconds and dispatches ready tasks.
+
+    Complements the gateway dispatcher (which may be at 60s). This thread
+    runs at 5s default, catching tasks the gateway hasn't picked up yet.
+    Idle detection backs off to 60s after 12 consecutive empty polls.
+    """
+    logger.info("crossbot-dispatcher: thread started (interval=%ds)", _dispatcher_interval())
+
+    board = _crossbot_kanban_board()
+    db_path = _boards_dir() / board / "kanban.db"
+
+    while not _dispatcher_stop.is_set():
+        try:
+            interval = _dispatcher_interval()
+
+            if db_path.is_file():
+                dispatched = _dispatch_one_ready(db_path)
+                if dispatched:
+                    _dispatcher_idle_polls = 0
+                    _dispatcher_last_idle = 0.0
+                else:
+                    _dispatcher_idle_polls += 1
+                    max_idle_polls = max(2, _dispatcher_max_idle() // interval)
+                    if _dispatcher_idle_polls > max_idle_polls:
+                        interval = min(interval * 2, 60)
+            else:
+                _dispatcher_idle_polls += 1
+
+        except Exception as e:
+            logger.warning("crossbot-dispatcher: tick error: %s", e)
+
+        _dispatcher_stop.wait(interval)
+
+    logger.info("crossbot-dispatcher: thread stopped")
+
+
+def _dispatch_one_ready(db_path: Path) -> bool:
+    """Claim and dispatch one ready task from the cross-bot board.
+
+    Uses SQLite to find and claim a 'ready' task atomically, then
+    dispatches via ``hermes kanban --board <name> claim <id>``.
+
+    Returns True if a task was claimed.
+    """
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=5)
+        conn.execute("PRAGMA busy_timeout=3000")
+        conn.execute("PRAGMA journal_mode=WAL")
+    except Exception:
+        return False
+
+    try:
+        row = conn.execute(
+            "SELECT id, title, body, assignee FROM tasks "
+            "WHERE status='ready' AND "
+            "      (claim_lock IS NULL OR claim_expires IS NULL OR claim_expires < ?) "
+            "ORDER BY created_at ASC LIMIT 1",
+            (time.time(),),
+        ).fetchone()
+        if not row:
+            return False
+
+        task_id, title, body, assignee = row
+        now = time.time()
+
+        conn.execute(
+            "UPDATE tasks SET status='running', "
+            "claim_lock=?, claim_expires=? "
+            "WHERE id=? AND status='ready'",
+            ("crossbot-dispatcher:%d" % os.getpid(), now + 300, task_id),
+        )
+        conn.commit()
+        if conn.total_changes == 0:
+            return False
+
+        conn.execute(
+            "INSERT INTO task_events (task_id, kind, payload, created_at) "
+            "VALUES (?, 'claimed', ?, ?)",
+            (task_id, json.dumps({"lock": "crossbot-dispatcher", "run_id": None}), now),
+        )
+        conn.commit()
+
+    except Exception as e:
+        logger.warning("crossbot-dispatcher: claim error: %s", e)
+        return False
+    finally:
+        conn.close()
+
+    try:
+        subprocess.run(
+            [_hermes_cli(), "kanban", "--board", _crossbot_kanban_board(),
+             "dispatch", "--task-id", task_id],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        logger.info(
+            "crossbot-dispatcher: dispatched task %s ('%s') for '%s'",
+            task_id, (title or "")[:40], assignee or "?",
+        )
+        return True
+    except Exception as e:
+        logger.warning(
+            "crossbot-dispatcher: dispatch command failed for %s: %s",
+            task_id, e,
+        )
+        return False
+
+
+def _start_dispatcher() -> None:
+    global _dispatcher_thread
+    if not _dispatcher_enabled():
+        logger.info("crossbot-dispatcher: disabled via CROSSBOT_DISPATCHER_ENABLED")
+        return
+    if _dispatcher_thread and _dispatcher_thread.is_alive():
+        return
+    _dispatcher_stop.clear()
+    _dispatcher_thread = threading.Thread(
+        target=_crossbot_dispatcher_loop,
+        name="crossbot-dispatcher",
+        daemon=True,
+    )
+    _dispatcher_thread.start()
+
+
+def _run_warmup() -> None:
+    """Create a lightweight warmup task to pre-load the Hermes agent.
+
+    The task is assigned to THIS bot so the dispatcher picks it up and the
+    agent loads its toolsets & LLM connection. Completes in seconds instead
+    of the 8-minute cold start on the first real task.
+    """
+    if not _warmup_enabled():
+        logger.info("crossbot-warmup: disabled via CROSSBOT_WARMUP_ENABLED")
+        return
+
+    bot = _my_bot_name()
+    if bot == "bot":
+        logger.debug("crossbot-warmup: skipping — bot name not resolved")
+        return
+
+    warmup_marker = "_crossbot_warmup_%d" % os.getpid()
+    try:
+        _create_crossbot_kanban_task(
+            title="[Warmup] %s" % warmup_marker,
+            body="ping\n\nComplete this task immediately with kanban_complete.",
+            assignee=bot,
+            created_by="crossbot",
+            initial_status="running",
+        )
+        logger.info("crossbot-warmup: warmup task created for '%s'", bot)
+    except Exception as e:
+        logger.debug("crossbot-warmup: failed to create warmup task: %s", e)
+
+
 def register(ctx) -> None:
     # Run proactive validation
     vr = run_validation()
@@ -2998,6 +3189,12 @@ def register(ctx) -> None:
     ctx.register_hook("post_llm_call", _shared_history.record_telegram_turn)
     ctx.register_hook("post_llm_call", _post_llm_mention_relay)
     ctx.register_hook("post_tool_call", _on_post_tool_call)
+
+    # Start mini-dispatcher daemon thread
+    _start_dispatcher()
+
+    # Warmup: pre-load the agent so cold start doesn't hit the first real task
+    _run_warmup()
 
     # Auto-tune kanban dispatcher — reduce polling from 60s to 10s
     # so cross-bot chains advance faster. Only runs once at plugin load.
