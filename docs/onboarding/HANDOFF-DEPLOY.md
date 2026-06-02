@@ -3,7 +3,7 @@
 > **Redirecionamento:** use o **[onboarding guiado](./00-onboarding-guiado.md)** (etapas 1–10) em vez deste fluxo manual. Este documento permanece como referência histórica.
 
 > **Para:** agente DevOps / operador do ambiente  
-> **Versão alvo:** crossbot **0.5.2+** *(pré-release; v1.0 após validação)*
+> **Versão alvo:** crossbot **0.6.0+**
 
 ## Fluxo recomendado (substitui seções abaixo)
 
@@ -27,7 +27,7 @@ Doc: [00-onboarding-guiado.md](./00-onboarding-guiado.md) · steps em [steps/](.
 cd ~/hermes-crossbot-telegram && git pull
 
 grep '^version:' ~/hermes-crossbot-telegram/plugins/crossbot/plugin.yaml
-# Esperado: 0.5.2 (pré-release)
+# Esperado: 0.6.0
 
 chmod +x scripts/install.sh
 ./scripts/install.sh cross-bot
@@ -69,7 +69,7 @@ print(mod.kanban_status())
 
 Checklist:
 
-- [ ] Versão **0.5.2+** no output
+- [ ] Versão **0.6.0+** no output
 - [ ] `MULTI_AGENT_TG_DB_PATH` idêntico em todos os profiles
 - [ ] Cada profile ativo tem `TELEGRAM_BOT_TOKEN` no `.env`
 - [ ] Cada profile ativo tem `CROSSBOT_BOT_NAME` = nome do profile

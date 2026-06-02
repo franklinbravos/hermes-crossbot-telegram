@@ -1,6 +1,6 @@
 # Debug Cross-Bot — Referência técnica
 
-> **Plugin:** crossbot v0.5.2+ *(pré-release)*  
+> **Plugin:** crossbot v0.6.0+  
 > **Para:** DevOps, Cursor, agentes que debugam sem acesso ao host.
 
 ## Sintoma → etapa do onboarding
@@ -126,7 +126,7 @@ tail -20 ~/.hermes/logs/crossbot/crossbot-audit.jsonl
 
 ### 4. Worker completou Kanban mas outbox pending?
 
-1. Confirme plugin **>= 0.5.2** com hook `post_tool_call` em `plugin.yaml`.
+1. Confirme plugin **>= 0.6.0** com hook `post_tool_call` em `plugin.yaml`.
 2. Worker deve chamar **`kanban_complete(summary=..., metadata={...})`** — **não** `crossbot_cli` via terminal (Tirith/security scan bloqueia workers).
 3. Se task ficou **`blocked`** com `Security scan` / `pending_approval` → step **7** do onboarding; não é bug do plugin.
 4. Verifique `HERMES_KANBAN_TASK` setado e outbox `pending` ligado ao `kanban_task_id`.
@@ -139,7 +139,7 @@ Esperado entre tokens de bots diferentes. Audit deve mostrar `attempt=citation` 
 
 ```bash
 grep version ~/.hermes/plugins/crossbot/plugin.yaml
-# deve ser 0.5.2
+# deve ser 0.6.0
 grep hooks ~/.hermes/plugins/crossbot/plugin.yaml
 # deve listar pre_llm_call, post_llm_call, post_tool_call
 ```

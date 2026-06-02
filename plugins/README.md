@@ -41,7 +41,7 @@ Setup guide: [../docs/onboarding/02-instalar-e-adaptar.md](../docs/onboarding/02
 
 | Plugin | Version |
 |--------|---------|
-| crossbot | 0.5.2 |
+| crossbot | 0.6.0 |
 | async-delegate | 1.1.0 |
 
 **Note:** `crossbot` v0.5 unifies `kanban-context` + `multi-agent-context`. v1.0 is the production milestone. See [crossbot/ATTRIBUTION.md](./crossbot/ATTRIBUTION.md).

@@ -14,7 +14,7 @@ The **crossbot** plugin unifies features that previously existed as separate plu
 ## Name and Version
 
 - **Repository:** [github.com/franklinbravos/hermes-crossbot-telegram](https://github.com/franklinbravos/hermes-crossbot-telegram) *(formerly `hermes-community-plugins`)*
-- **Plugin:** `crossbot` v0.5.2 *(pre-release)*
+- **Plugin:** `crossbot` v0.6.0
 - **v1.0:** reserved for when mention relay + visibility are validated in production
 - **Dependencies:** Hermes Core + Python standard library (no `pip install` extras)
 

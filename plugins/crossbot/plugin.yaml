@@ -1,5 +1,5 @@
 name: crossbot
-version: 0.5.2
+version: 0.6.0
 description: "Crossbot — Telegram mensagem bot-to-bot (pré-release). Plugin unificado: histórico compartilhado, outbox, Kanban dispatch, mention relay e visibilidade Telegram. Apenas Hermes Core + stdlib. v1.0 após validação em produção."
 author: "Franklin Bravos (@franklinbravos)"
 python: ">=3.11"

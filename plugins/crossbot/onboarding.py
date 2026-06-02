@@ -240,7 +240,7 @@ def verify_step(step_id: str, state: Dict[str, Any], root: Optional[Path] = None
         return _verify_result(
             passed, flags,
             {"version": _plugin_version(root), "hooks": hooks},
-            "Plugin install OK" if passed else "Atualize crossbot >= 0.5.2",
+            "Plugin install OK" if passed else "Atualize crossbot >= 0.6.0",
         )
 
     if verifier == "legacy_migrate":

@@ -41,7 +41,7 @@ Setup: [../docs/onboarding/02-instalar-e-adaptar.md](../docs/onboarding/02-insta
 
 | Plugin | Versão |
 |--------|--------|
-| crossbot | 0.5.2 |
+| crossbot | 0.6.0 |
 | async-delegate | 1.1.0 |
 
 **Nota:** `crossbot` v0.5 unifica `kanban-context` + `multi-agent-context`. v1.0 = milestone pós-testes. Ver [crossbot/ATTRIBUTION.pt-BR.md](./crossbot/ATTRIBUTION.pt-BR.md).

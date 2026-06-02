@@ -4,7 +4,7 @@
 
 A Hermes plugin for **bots to talk to each other on Telegram** — shared history, outbox, Kanban, mention relay (`@colleague`), and group visibility.
 
-**Version:** 0.5.2 *(pre-release — v1.0 after production validation)*  
+**Version:** 0.6.0  
 **Requirements:** [Hermes Agent](https://github.com/NousResearch/hermes-agent) v0.13+ · Python 3.11+ · stdlib only
 
 ---

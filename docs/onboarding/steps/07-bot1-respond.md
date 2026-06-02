@@ -16,14 +16,14 @@ Worker deve usar **`kanban_complete(summary=..., metadata=...)`** — o hook `po
 
 - **PASS:** outbox `done` + audit `crossbot_respond`
 - **FAIL:** `WORKER_TERMINAL_BLOCKED` (task blocked + Security scan)
-- **FAIL:** `KANBAN_DONE_OUTBOX_PENDING` (plugin < 0.5.2 ou hook ausente)
+- **FAIL:** `KANBAN_DONE_OUTBOX_PENDING` (plugin < 0.6.0 ou hook ausente)
 
 ## Falhas comuns
 
 | Flag | Causa |
 |------|-------|
 | WORKER_TERMINAL_BLOCKED | Worker tentou terminal |
-| KANBAN_DONE_OUTBOX_PENDING | Atualizar plugin 0.5.2+ |
+| KANBAN_DONE_OUTBOX_PENDING | Atualizar plugin 0.6.0+ |
 | OUTBOX_ALL_PENDING | Worker não completou — aguardar mais |
 
 Debug: `./scripts/crossbot-debug-pack.sh pack`

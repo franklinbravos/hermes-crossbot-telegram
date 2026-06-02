@@ -11,7 +11,7 @@ Ou só o plugin: `./scripts/install.sh cross-bot`
 
 ## Gate (verify)
 
-- `plugin.yaml` version >= **0.5.2**
+- `plugin.yaml` version >= **0.6.0**
 - Hooks: `pre_llm_call`, `post_llm_call`, **`post_tool_call`**
 - Instruções worker **não** exigem `crossbot_cli` obrigatório
 

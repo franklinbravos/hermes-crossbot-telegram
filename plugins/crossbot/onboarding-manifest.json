@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "min_plugin_version": "0.5.2",
+  "min_plugin_version": "0.6.0",
   "step_order": ["1", "2", "3a", "3b", "4", "5", "6", "7", "8", "9", "10"],
   "steps": {
     "1": {
@@ -11,7 +11,7 @@
       "timeout_seconds": 60,
       "action_hint": "cd ~/hermes-crossbot-telegram && ./scripts/bootstrap.sh --yes",
       "failure_hints": [
-        "Confirme plugins/crossbot/plugin.yaml version >= 0.5.2",
+        "Confirme plugins/crossbot/plugin.yaml version >= 0.6.0",
         "Hooks devem incluir post_tool_call",
         "Rode: ./scripts/crossbot-onboarding.sh verify"
       ]
@@ -100,7 +100,7 @@
       "action_hint": "Worker usa kanban_complete(summary, metadata) — NÃO terminal/crossbot_cli",
       "failure_hints": [
         "WORKER_TERMINAL_BLOCKED: security scan bloqueou terminal — use kanban_complete",
-        "KANBAN_DONE_OUTBOX_PENDING: atualize plugin >= 0.5.2 com post_tool_call",
+        "KANBAN_DONE_OUTBOX_PENDING: atualize plugin >= 0.6.0 com post_tool_call",
         "verify --watch 180 antes de desistir (dispatcher 60s)"
       ]
     },

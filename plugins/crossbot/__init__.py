@@ -1,6 +1,6 @@
 """crossbot — Telegram mensagem bot-to-bot para Hermes Agent.
 
-Plugin unificado (v0.5.2, pré-release): histórico compartilhado + outbox + Kanban dispatch +
+Plugin unificado (v0.6.0): histórico compartilhado + outbox + Kanban dispatch +
 mention relay + visibilidade Telegram.
 
 Origem dos módulos incorporados:
